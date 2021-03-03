@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,22 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Generate pianoroll tracks from a trained RNN-NADE checkpoint.
 
 Uses flags to define operation.
 """
-
 import ast
 import os
 import time
 
-import magenta
 from magenta.models.pianoroll_rnn_nade import pianoroll_rnn_nade_model
 from magenta.models.pianoroll_rnn_nade.pianoroll_rnn_nade_sequence_generator import PianorollRnnNadeSequenceGenerator
-from magenta.music import constants
-from magenta.protobuf import generator_pb2
-from magenta.protobuf import music_pb2
-import tensorflow as tf
+from magenta.models.shared import sequence_generator
+from magenta.models.shared import sequence_generator_bundle
+import note_seq
+from note_seq.protobuf import generator_pb2
+from note_seq.protobuf import music_pb2
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string(
@@ -65,9 +66,8 @@ tf.app.flags.DEFINE_string(
     'a starting chord with a quarter note duration. For example: '
     '"[60, 64, 67]"')
 tf.app.flags.DEFINE_string(
-    'primer_pianoroll', '',
-    'A string representation of a Python list of '
-    '`magenta.music.PianorollSequence` event values (tuples of active MIDI'
+    'primer_pianoroll', '', 'A string representation of a Python list of '
+    '`note_seq.PianorollSequence` event values (tuples of active MIDI'
     'pitches for a sequence of steps). For example: '
     '"[(55,), (54,), (55, 53), (50,), (62, 52), (), (63, 55)]".')
 tf.app.flags.DEFINE_string(
@@ -99,7 +99,7 @@ tf.app.flags.DEFINE_string(
 def get_checkpoint():
   """Get the training dir or checkpoint path to be used by the model."""
   if FLAGS.run_dir and FLAGS.bundle_file and not FLAGS.save_generator_bundle:
-    raise magenta.music.SequenceGeneratorError(
+    raise sequence_generator.SequenceGeneratorError(
         'Cannot specify both bundle_file and run_dir')
   if FLAGS.run_dir:
     train_dir = os.path.join(os.path.expanduser(FLAGS.run_dir), 'train')
@@ -120,7 +120,7 @@ def get_bundle():
   if FLAGS.bundle_file is None:
     return None
   bundle_file = os.path.expanduser(FLAGS.bundle_file)
-  return magenta.music.read_bundle_file(bundle_file)
+  return sequence_generator_bundle.read_bundle_file(bundle_file)
 
 
 def run_with_flags(generator):
@@ -148,7 +148,7 @@ def run_with_flags(generator):
   if FLAGS.primer_pitches:
     primer_sequence = music_pb2.NoteSequence()
     primer_sequence.tempos.add().qpm = qpm
-    primer_sequence.ticks_per_quarter = constants.STANDARD_PPQ
+    primer_sequence.ticks_per_quarter = note_seq.STANDARD_PPQ
     for pitch in ast.literal_eval(FLAGS.primer_pitches):
       note = primer_sequence.notes.add()
       note.start_time = 0
@@ -157,12 +157,13 @@ def run_with_flags(generator):
       note.velocity = 100
     primer_sequence.total_time = primer_sequence.notes[-1].end_time
   elif FLAGS.primer_pianoroll:
-    primer_pianoroll = magenta.music.PianorollSequence(
+    primer_pianoroll = note_seq.PianorollSequence(
         events_list=ast.literal_eval(FLAGS.primer_pianoroll),
-        steps_per_quarter=4, shift_range=True)
+        steps_per_quarter=4,
+        shift_range=True)
     primer_sequence = primer_pianoroll.to_sequence(qpm=qpm)
   elif primer_midi:
-    primer_sequence = magenta.music.midi_file_to_sequence_proto(primer_midi)
+    primer_sequence = note_seq.midi_file_to_sequence_proto(primer_midi)
     if primer_sequence.tempos and primer_sequence.tempos[0].qpm:
       qpm = primer_sequence.tempos[0].qpm
   else:
@@ -170,7 +171,7 @@ def run_with_flags(generator):
         'No priming sequence specified. Defaulting to empty sequence.')
     primer_sequence = music_pb2.NoteSequence()
     primer_sequence.tempos.add().qpm = qpm
-    primer_sequence.ticks_per_quarter = constants.STANDARD_PPQ
+    primer_sequence.ticks_per_quarter = note_seq.STANDARD_PPQ
 
   # Derive the total number of seconds to generate.
   seconds_per_step = 60.0 / qpm / generator.steps_per_quarter
@@ -208,7 +209,7 @@ def run_with_flags(generator):
 
     midi_filename = '%s_%s.mid' % (date_and_time, str(i + 1).zfill(digits))
     midi_path = os.path.join(output_dir, midi_filename)
-    magenta.music.sequence_proto_to_midi_file(generated_sequence, midi_path)
+    note_seq.sequence_proto_to_midi_file(generated_sequence, midi_path)
 
   tf.logging.info('Wrote %d MIDI files to %s',
                   FLAGS.num_outputs, output_dir)
@@ -245,6 +246,7 @@ def main(unused_argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 

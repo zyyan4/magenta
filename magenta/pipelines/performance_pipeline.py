@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,22 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Pipeline to create Performance dataset."""
 
-import magenta
-from magenta.music import MetricPerformance
-from magenta.music import Performance
-from magenta.music import sequences_lib
-from magenta.music.performance_lib import NotePerformance
-from magenta.music.performance_lib import TooManyDurationStepsError
-from magenta.music.performance_lib import TooManyTimeShiftStepsError
 from magenta.pipelines import dag_pipeline
 from magenta.pipelines import note_sequence_pipelines
 from magenta.pipelines import pipeline
 from magenta.pipelines import pipelines_common
 from magenta.pipelines import statistics
-from magenta.protobuf import music_pb2
-import tensorflow as tf
+from note_seq import MetricPerformance
+from note_seq import Performance
+from note_seq import sequences_lib
+from note_seq.performance_lib import BasePerformance
+from note_seq.performance_lib import NotePerformance
+from note_seq.performance_lib import TooManyDurationStepsError
+from note_seq.performance_lib import TooManyTimeShiftStepsError
+from note_seq.protobuf import music_pb2
+import tensorflow.compat.v1 as tf
 
 
 class EncoderPipeline(pipeline.Pipeline):
@@ -42,7 +43,7 @@ class EncoderPipeline(pipeline.Pipeline):
       name: A unique pipeline name.
     """
     super(EncoderPipeline, self).__init__(
-        input_type=magenta.music.performance_lib.BasePerformance,
+        input_type=BasePerformance,
         output_type=tf.train.SequenceExample,
         name=name)
     self._encoder_decoder = config.encoder_decoder
@@ -50,20 +51,21 @@ class EncoderPipeline(pipeline.Pipeline):
     self._optional_conditioning = config.optional_conditioning
 
   def transform(self, performance):
+
     if self._control_signals:
       # Encode conditional on control signals.
       control_sequences = []
       for control in self._control_signals:
         control_sequences.append(control.extract(performance))
-      control_sequence = zip(*control_sequences)
+      control_sequence = list(zip(*control_sequences))
       if self._optional_conditioning:
         # Create two copies, one with and one without conditioning.
         # pylint: disable=g-complex-comprehension
         encoded = [
             self._encoder_decoder.encode(
-                zip([disable] * len(control_sequence), control_sequence),
-                performance)
-            for disable in [False, True]]
+                list(zip([disable] * len(control_sequence), control_sequence)),
+                performance) for disable in [False, True]
+        ]
         # pylint: enable=g-complex-comprehension
       else:
         encoded = [self._encoder_decoder.encode(
@@ -71,7 +73,7 @@ class EncoderPipeline(pipeline.Pipeline):
     else:
       # Encode unconditional.
       encoded = [self._encoder_decoder.encode(performance)]
-    return encoded
+    return [pipelines_common.make_sequence_example(*enc) for enc in encoded]
 
 
 class PerformanceExtractor(pipeline.Pipeline):
@@ -81,7 +83,7 @@ class PerformanceExtractor(pipeline.Pipeline):
                note_performance, name=None):
     super(PerformanceExtractor, self).__init__(
         input_type=music_pb2.NoteSequence,
-        output_type=magenta.music.performance_lib.BasePerformance,
+        output_type=BasePerformance,
         name=name)
     self._min_events = min_events
     self._max_events = max_events
@@ -115,7 +117,7 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
   stretch_factors = [0.95, 0.975, 1.0, 1.025, 1.05]
 
   # Transpose no more than a major third.
-  transposition_range = range(-3, 4)
+  transposition_range = list(range(-3, 4))
 
   partitioner = pipelines_common.RandomPartition(
       music_pb2.NoteSequence,
@@ -218,7 +220,7 @@ def extract_performances(
       programs.add(note.program)
     if len(programs) > 1:
       stats['performances_discarded_more_than_1_program'].increment()
-      return [], stats.values()
+      return [], list(stats.values())
 
   performances = []
 
@@ -265,4 +267,4 @@ def extract_performances(
         stats['performance_lengths_in_bars'].increment(
             performance.num_steps // steps_per_bar)
 
-  return performances, stats.values()
+  return performances, list(stats.values())

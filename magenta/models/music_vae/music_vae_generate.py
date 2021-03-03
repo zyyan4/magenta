@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,11 +24,11 @@ import os
 import sys
 import time
 
-from magenta import music as mm
 from magenta.models.music_vae import configs
 from magenta.models.music_vae import TrainedModel
+import note_seq
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 flags = tf.app.flags
 logging = tf.logging
@@ -116,8 +116,8 @@ def run(config_map):
       raise ValueError('Input MIDI 1 not found: %s' % FLAGS.input_midi_1)
     if not os.path.exists(input_midi_2):
       raise ValueError('Input MIDI 2 not found: %s' % FLAGS.input_midi_2)
-    input_1 = mm.midi_file_to_note_sequence(input_midi_1)
-    input_2 = mm.midi_file_to_note_sequence(input_midi_2)
+    input_1 = note_seq.midi_file_to_note_sequence(input_midi_1)
+    input_2 = note_seq.midi_file_to_note_sequence(input_midi_2)
 
     def _check_extract_examples(input_ns, path, input_number):
       """Make sure each input returns exactly one example from the converter."""
@@ -132,8 +132,9 @@ def run(config_map):
             FLAGS.output_dir,
             '%s_input%d-extractions_%s-*-of-%03d.mid' %
             (FLAGS.config, input_number, date_and_time, len(tensors)))
-        for i, ns in enumerate(config.data_converter.to_notesequences(tensors)):
-          mm.sequence_proto_to_midi_file(ns, basename.replace('*', '%03d' % i))
+        for i, ns in enumerate(config.data_converter.from_tensors(tensors)):
+          note_seq.sequence_proto_to_midi_file(
+              ns, basename.replace('*', '%03d' % i))
         print(
             '%d valid inputs extracted from `%s`. Outputting these potential '
             'inputs as `%s`. Call script again with one of these instead.' %
@@ -177,7 +178,7 @@ def run(config_map):
       (FLAGS.config, FLAGS.mode, date_and_time, FLAGS.num_outputs))
   logging.info('Outputting %d files as `%s`...', FLAGS.num_outputs, basename)
   for i, ns in enumerate(results):
-    mm.sequence_proto_to_midi_file(ns, basename.replace('*', '%03d' % i))
+    note_seq.sequence_proto_to_midi_file(ns, basename.replace('*', '%03d' % i))
 
   logging.info('Done.')
 
@@ -188,6 +189,7 @@ def main(unused_argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 

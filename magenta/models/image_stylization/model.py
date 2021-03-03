@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,23 +13,23 @@
 # limitations under the License.
 
 """Style transfer network code."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from magenta.models.image_stylization import ops
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+import tf_slim as slim
 
-slim = tf.contrib.slim
 
-
-def transform(input_, normalizer_fn=ops.conditional_instance_norm,
-              normalizer_params=None, reuse=False):
+def transform(input_,
+              alpha=1.0,
+              normalizer_fn=ops.conditional_instance_norm,
+              normalizer_params=None,
+              reuse=False):
   """Maps content images to stylized images.
 
   Args:
     input_: Tensor. Batch of input images.
+    alpha: Float. Width multiplier to reduce the number of filters in the model
+        and slim it down. Defaults to 1.0, which results in the hyper-parameters
+        used in the published paper.
     normalizer_fn: normalization layer function.  Defaults to
         ops.conditional_instance_norm.
     normalizer_params: dict of parameters to pass to the conditional instance
@@ -50,9 +50,9 @@ def transform(input_, normalizer_fn=ops.conditional_instance_norm,
         weights_initializer=tf.random_normal_initializer(0.0, 0.01),
         biases_initializer=tf.constant_initializer(0.0)):
       with tf.variable_scope('contract'):
-        h = conv2d(input_, 9, 1, 32, 'conv1')
-        h = conv2d(h, 3, 2, 64, 'conv2')
-        h = conv2d(h, 3, 2, 128, 'conv3')
+        h = conv2d(input_, 9, 1, int(alpha * 32), 'conv1')
+        h = conv2d(h, 3, 2, int(alpha * 64), 'conv2')
+        h = conv2d(h, 3, 2, int(alpha * 128), 'conv3')
       with tf.variable_scope('residual'):
         h = residual_block(h, 3, 'residual1')
         h = residual_block(h, 3, 'residual2')
@@ -60,8 +60,8 @@ def transform(input_, normalizer_fn=ops.conditional_instance_norm,
         h = residual_block(h, 3, 'residual4')
         h = residual_block(h, 3, 'residual5')
       with tf.variable_scope('expand'):
-        h = upsampling(h, 3, 2, 64, 'conv1')
-        h = upsampling(h, 3, 2, 32, 'conv2')
+        h = upsampling(h, 3, 2, int(alpha * 64), 'conv1')
+        h = upsampling(h, 3, 2, int(alpha * 32), 'conv2')
         return upsampling(h, 9, 1, 3, 'conv3', activation_fn=tf.nn.sigmoid)
 
 
@@ -169,7 +169,7 @@ def residual_block(input_, kernel_size, scope, activation_fn=tf.nn.relu):
   if kernel_size % 2 == 0:
     raise ValueError('kernel_size is expected to be odd.')
   with tf.variable_scope(scope):
-    num_outputs = input_.get_shape()[-1].value
+    num_outputs = int(input_.get_shape()[-1])
     h_1 = conv2d(input_, kernel_size, 1, num_outputs, 'conv1', activation_fn)
     h_2 = conv2d(h_1, kernel_size, 1, num_outputs, 'conv2', None)
     return input_ + h_2

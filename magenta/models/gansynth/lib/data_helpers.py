@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from __future__ import print_function
 from magenta.models.gansynth.lib import datasets
 from magenta.models.gansynth.lib import train_util
 from magenta.models.gansynth.lib.specgrams_helper import SpecgramsHelper
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 class DataHelper(object):
@@ -69,7 +69,7 @@ class DataHelper(object):
         dataset = dataset.batch(batch_size)
         dataset = dataset.prefetch(1)
 
-        iterator = dataset.make_initializable_iterator()
+        iterator = tf.data.make_initializable_iterator(dataset)
         tf.add_to_collection(tf.GraphKeys.TABLE_INITIALIZERS,
                              iterator.initializer)
 

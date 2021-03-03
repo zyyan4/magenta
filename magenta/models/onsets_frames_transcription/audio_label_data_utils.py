@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,13 +23,22 @@ import math
 
 import librosa
 
-from magenta.music import audio_io
-from magenta.music import constants
-from magenta.music import sequences_lib
-from magenta.protobuf import music_pb2
+from note_seq import audio_io
+from note_seq import constants
+from note_seq import sequences_lib
+from note_seq.protobuf import music_pb2
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+
+
+def velocity_range_from_sequence(ns):
+  """Derive a VelocityRange proto from a NoteSequence."""
+  velocities = [note.velocity for note in ns.notes]
+  velocity_max = np.max(velocities) if velocities else 0
+  velocity_min = np.min(velocities) if velocities else 0
+  velocity_range = music_pb2.VelocityRange(min=velocity_min, max=velocity_max)
+  return velocity_range
 
 
 def find_inactive_ranges(note_sequence):
@@ -206,10 +215,11 @@ def find_split_points(note_sequence, samples, sample_rate, min_length,
 def create_example(example_id, ns, wav_data, velocity_range=None):
   """Creates a tf.train.Example proto for training or testing."""
   if velocity_range is None:
-    velocities = [note.velocity for note in ns.notes]
-    velocity_max = np.max(velocities)
-    velocity_min = np.min(velocities)
-    velocity_range = music_pb2.VelocityRange(min=velocity_min, max=velocity_max)
+    velocity_range = velocity_range_from_sequence(ns)
+
+  # Ensure that all sequences for training and evaluation have gone through
+  # sustain processing.
+  sus_ns = sequences_lib.apply_sustain_control_changes(ns)
 
   example = tf.train.Example(
       features=tf.train.Features(
@@ -221,7 +231,7 @@ def create_example(example_id, ns, wav_data, velocity_range=None):
               'sequence':
                   tf.train.Feature(
                       bytes_list=tf.train.BytesList(
-                          value=[ns.SerializeToString()])),
+                          value=[sus_ns.SerializeToString()])),
               'audio':
                   tf.train.Feature(
                       bytes_list=tf.train.BytesList(value=[wav_data])),
@@ -268,16 +278,27 @@ def process_record(wav_data,
     print('Exception %s', e)
     return
   samples = librosa.util.normalize(samples, norm=np.inf)
+
+  # Add padding to samples if notesequence is longer.
+  pad_to_samples = int(math.ceil(ns.total_time * sample_rate))
+  padding_needed = pad_to_samples - samples.shape[0]
+  if padding_needed > 5 * sample_rate:
+    raise ValueError(
+        'Would have padded {} more than 5 seconds to match note sequence total '
+        'time. ({} original samples, {} sample rate, {} sample seconds, '
+        '{} sequence seconds) This likely indicates a problem with the source '
+        'data.'.format(
+            example_id, samples.shape[0], sample_rate,
+            samples.shape[0] / sample_rate, ns.total_time))
+  samples = np.pad(samples, (0, max(0, padding_needed)), 'constant')
+
   if max_length == min_length:
     splits = np.arange(0, ns.total_time, max_length)
   elif max_length > 0:
     splits = find_split_points(ns, samples, sample_rate, min_length, max_length)
   else:
     splits = [0, ns.total_time]
-  velocities = [note.velocity for note in ns.notes]
-  velocity_max = np.max(velocities) if velocities else 0
-  velocity_min = np.min(velocities) if velocities else 0
-  velocity_range = music_pb2.VelocityRange(min=velocity_min, max=velocity_max)
+  velocity_range = velocity_range_from_sequence(ns)
 
   for start, end in zip(splits[:-1], splits[1:]):
     if end - start < min_length:
@@ -322,6 +343,18 @@ def mix_sequences(individual_samples, sample_rate, individual_sequences):
     mixed_samples: The mixed audio.
     mixed_sequence: The mixed NoteSequence.
   """
+  # Normalize samples and sequence velocities before mixing.
+  # This ensures that the velocities/loudness of the individual samples
+  # are treated equally.
+  for i, samples in enumerate(individual_samples):
+    individual_samples[i] = librosa.util.normalize(samples, norm=np.inf)
+  for sequence in individual_sequences:
+    velocities = [note.velocity for note in sequence.notes]
+    velocity_max = np.max(velocities)
+    for note in sequence.notes:
+      note.velocity = int(
+          (note.velocity / velocity_max) * constants.MAX_MIDI_VELOCITY)
+
   # Ensure that samples are always at least as long as their paired sequences.
   for i, (samples, sequence) in enumerate(
       zip(individual_samples, individual_sequences)):

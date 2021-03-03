@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,12 +17,13 @@
 import functools
 
 from magenta.models.improv_rnn import improv_rnn_model
-import magenta.music as mm
+from magenta.models.shared import sequence_generator
 from magenta.pipelines import chord_pipelines
 from magenta.pipelines import melody_pipelines
+import note_seq
 
 
-class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
+class ImprovRnnSequenceGenerator(sequence_generator.BaseSequenceGenerator):
   """Improv RNN generation code as a SequenceGenerator interface."""
 
   def __init__(self, model, details, steps_per_quarter=4, checkpoint=None,
@@ -45,19 +46,19 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
   def _generate(self, input_sequence, generator_options):
     if len(generator_options.input_sections) > 1:
-      raise mm.SequenceGeneratorError(
+      raise sequence_generator.SequenceGeneratorError(
           'This model supports at most one input_sections message, but got %s' %
           len(generator_options.input_sections))
     if len(generator_options.generate_sections) != 1:
-      raise mm.SequenceGeneratorError(
+      raise sequence_generator.SequenceGeneratorError(
           'This model supports only 1 generate_sections message, but got %s' %
           len(generator_options.generate_sections))
 
     if input_sequence and input_sequence.tempos:
       qpm = input_sequence.tempos[0].qpm
     else:
-      qpm = mm.DEFAULT_QUARTERS_PER_MINUTE
-    steps_per_second = mm.steps_per_quarter_to_steps_per_second(
+      qpm = note_seq.DEFAULT_QUARTERS_PER_MINUTE
+    steps_per_second = note_seq.steps_per_quarter_to_steps_per_second(
         self.steps_per_quarter, qpm)
 
     generate_section = generator_options.generate_sections[0]
@@ -65,19 +66,21 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
       # Use primer melody from input section only. Take backing chords from
       # beginning of input section through end of generate section.
       input_section = generator_options.input_sections[0]
-      primer_sequence = mm.trim_note_sequence(
-          input_sequence, input_section.start_time, input_section.end_time)
-      backing_sequence = mm.trim_note_sequence(
-          input_sequence, input_section.start_time, generate_section.end_time)
-      input_start_step = mm.quantize_to_step(
+      primer_sequence = note_seq.trim_note_sequence(input_sequence,
+                                                    input_section.start_time,
+                                                    input_section.end_time)
+      backing_sequence = note_seq.trim_note_sequence(input_sequence,
+                                                     input_section.start_time,
+                                                     generate_section.end_time)
+      input_start_step = note_seq.quantize_to_step(
           input_section.start_time, steps_per_second, quantize_cutoff=0.0)
     else:
       # No input section. Take primer melody from the beginning of the sequence
       # up until the start of the generate section.
-      primer_sequence = mm.trim_note_sequence(
-          input_sequence, 0.0, generate_section.start_time)
-      backing_sequence = mm.trim_note_sequence(
-          input_sequence, 0.0, generate_section.end_time)
+      primer_sequence = note_seq.trim_note_sequence(input_sequence, 0.0,
+                                                    generate_section.start_time)
+      backing_sequence = note_seq.trim_note_sequence(input_sequence, 0.0,
+                                                     generate_section.end_time)
       input_start_step = 0
 
     if primer_sequence.notes:
@@ -85,16 +88,16 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
     else:
       last_end_time = 0
     if last_end_time >= generate_section.start_time:
-      raise mm.SequenceGeneratorError(
+      raise sequence_generator.SequenceGeneratorError(
           'Got GenerateSection request for section that is before or equal to '
           'the end of the input section. This model can only extend melodies. '
           'Requested start time: %s, Final note end time: %s' %
           (generate_section.start_time, last_end_time))
 
     # Quantize the priming and backing sequences.
-    quantized_primer_sequence = mm.quantize_note_sequence(
+    quantized_primer_sequence = note_seq.quantize_note_sequence(
         primer_sequence, self.steps_per_quarter)
-    quantized_backing_sequence = mm.quantize_note_sequence(
+    quantized_backing_sequence = note_seq.quantize_note_sequence(
         backing_sequence, self.steps_per_quarter)
 
     # Setting gap_bars to infinite ensures that the entire input will be used.
@@ -104,12 +107,12 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
         ignore_polyphonic_notes=True)
     assert len(extracted_melodies) <= 1
 
-    start_step = mm.quantize_to_step(
+    start_step = note_seq.quantize_to_step(
         generate_section.start_time, steps_per_second, quantize_cutoff=0.0)
     # Note that when quantizing end_step, we set quantize_cutoff to 1.0 so it
     # always rounds down. This avoids generating a sequence that ends at 5.0
     # seconds when the requested end time is 4.99.
-    end_step = mm.quantize_to_step(
+    end_step = note_seq.quantize_to_step(
         generate_section.end_time, steps_per_second, quantize_cutoff=1.0)
 
     if extracted_melodies and extracted_melodies[0]:
@@ -119,11 +122,12 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
       # step before the request start_step. This will result in 1 step of
       # silence when the melody is extended below.
       steps_per_bar = int(
-          mm.steps_per_bar_in_quantized_sequence(quantized_primer_sequence))
-      melody = mm.Melody([],
-                         start_step=max(0, start_step - 1),
-                         steps_per_bar=steps_per_bar,
-                         steps_per_quarter=self.steps_per_quarter)
+          note_seq.steps_per_bar_in_quantized_sequence(
+              quantized_primer_sequence))
+      melody = note_seq.Melody([],
+                               start_step=max(0, start_step - 1),
+                               steps_per_bar=steps_per_bar,
+                               steps_per_quarter=self.steps_per_quarter)
 
     extracted_chords, _ = chord_pipelines.extract_chords(
         quantized_backing_sequence)
@@ -150,7 +154,7 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
                 if name in generator_options.args)
 
     generated_melody = self._model.generate_melody(melody, chords, **args)
-    generated_lead_sheet = mm.LeadSheet(generated_melody, chords)
+    generated_lead_sheet = note_seq.LeadSheet(generated_melody, chords)
     generated_sequence = generated_lead_sheet.to_sequence(qpm=qpm)
     assert (generated_sequence.total_time - generate_section.end_time) <= 1e-5
     return generated_sequence

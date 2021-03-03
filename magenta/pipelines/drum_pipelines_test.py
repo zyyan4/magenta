@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,19 +14,19 @@
 
 """Tests for drum_pipelines."""
 
+from absl.testing import absltest
 from magenta.common import testing_lib as common_testing_lib
-from magenta.music import drums_lib
-from magenta.music import sequences_lib
-from magenta.music import testing_lib as music_testing_lib
 from magenta.pipelines import drum_pipelines
-from magenta.protobuf import music_pb2
-import tensorflow as tf
+from note_seq import drums_lib
+from note_seq import sequences_lib
+from note_seq import testing_lib as music_testing_lib
+from note_seq.protobuf import music_pb2
 
 DRUMS = lambda *args: frozenset(args)
 NO_DRUMS = frozenset()
 
 
-class DrumPipelinesTest(tf.test.TestCase):
+class DrumPipelinesTest(absltest.TestCase):
 
   def setUp(self):
     self.steps_per_quarter = 4
@@ -45,7 +45,7 @@ class DrumPipelinesTest(tf.test.TestCase):
   def _unit_transform_test(self, unit, input_instance,
                            expected_outputs):
     outputs = unit.transform(input_instance)
-    self.assertTrue(isinstance(outputs, list))
+    self.assertIsInstance(outputs, list)
     common_testing_lib.assert_set_equality(self, expected_outputs, outputs)
     self.assertEqual(unit.input_type, type(input_instance))
     if outputs:
@@ -96,7 +96,7 @@ class DrumPipelinesTest(tf.test.TestCase):
     drum_tracks, _ = drum_pipelines.extract_drum_tracks(
         quantized_sequence, min_bars=1, gap_bars=1)
 
-    self.assertEqual(1, len(drum_tracks))
+    self.assertLen(drum_tracks, 1)
     self.assertIsInstance(drum_tracks[0], drums_lib.DrumTrack)
 
     drum_tracks = sorted([list(drums) for drums in drum_tracks])
@@ -215,4 +215,4 @@ class DrumPipelinesTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  absltest.main()

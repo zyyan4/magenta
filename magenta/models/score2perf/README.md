@@ -5,17 +5,18 @@ generating musical performances, either unconditioned or conditioned on a
 musical score.
 
 This is your main access point for the Music Transformer model described in
-[this paper](https://arxiv.org/abs/1809.04281).
+[this paper](https://arxiv.org/abs/1809.04281). If you only want to experiment
+with our pretrained models, check out our [Piano Transformer colab notebook](https://colab.research.google.com/notebooks/magenta/piano_transformer/piano_transformer.ipynb).
 
 To run any of the below commands, you first need to install Magenta as described
-[here](/README.md#development-environment)
+[here](/README.md#development-environment), except you'll also need Apache Beam
+so the install command is:
 
-## Sample from a pretrained model
+```
+pip install -e .[beam]
+```
 
-Coming soon!
-
-
-## Train your own
+## Train your own model
 
 Training your own model consists of two main steps:
 
@@ -34,9 +35,6 @@ This is going to be a little bit annoying, but to create a dataset for training
 music transformer, you'll probably want to use Cloud Dataflow or some other
 platform that supports Apache Beam. You can also run datagen locally, but it
 will be very slow due to the NoteSequence preprocessing.
-
-Unfortunately, as Apache Beam does not currently support Python 3, you'll need
-to use Python 2 here.
 
 Anyway, to prepare the dataset, do the following:
 

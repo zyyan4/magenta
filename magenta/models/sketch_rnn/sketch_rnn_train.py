@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """SketchRNN training."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import json
 import os
@@ -29,7 +26,7 @@ import numpy as np
 import requests
 import six
 from six.moves.urllib.request import urlretrieve
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -133,10 +130,7 @@ def load_dataset(data_dir, model_params, inference_mode=False):
       data = np.load(six.BytesIO(response.content), encoding='latin1')
     else:
       data_filepath = os.path.join(data_dir, dataset)
-      if six.PY3:
-        data = np.load(data_filepath, encoding='latin1')
-      else:
-        data = np.load(data_filepath)
+      data = np.load(data_filepath, encoding='latin1', allow_pickle=True)
     tf.logging.info('Loaded {}/{}/{} from {}'.format(
         len(data['train']), len(data['valid']), len(data['test']),
         dataset))
@@ -432,8 +426,6 @@ def trainer(model_params):
 
   tf.logging.info('sketch-rnn')
   tf.logging.info('Hyperparams:')
-  for key, val in six.iteritems(model_params.values()):
-    tf.logging.info('%s = %s', key, str(val))
   tf.logging.info('Loading data files.')
   datasets = load_dataset(FLAGS.data_dir, model_params)
 
@@ -457,7 +449,7 @@ def trainer(model_params):
   tf.gfile.MakeDirs(FLAGS.log_root)
   with tf.gfile.Open(
       os.path.join(FLAGS.log_root, 'model_config.json'), 'w') as f:
-    json.dump(model_params.values(), f, indent=True)
+    json.dump(list(model_params.values()), f, indent=True)
 
   train(sess, model, eval_model, train_set, valid_set, test_set)
 
@@ -471,6 +463,7 @@ def main(unused_argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 

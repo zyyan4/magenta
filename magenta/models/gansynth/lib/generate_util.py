@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Helper functions for generating sounds.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-from magenta import music as mm
 from magenta.models.gansynth.lib import util
+import note_seq
 import numpy as np
 import scipy.io.wavfile as wavfile
 
@@ -38,7 +36,7 @@ def slerp(p0, p1, t):
 def load_midi(midi_path, min_pitch=36, max_pitch=84):
   """Load midi as a notesequence."""
   midi_path = util.expand_path(midi_path)
-  ns = mm.midi_file_to_sequence_proto(midi_path)
+  ns = note_seq.midi_file_to_sequence_proto(midi_path)
   pitches = np.array([n.pitch for n in ns.notes])
   velocities = np.array([n.velocity for n in ns.notes])
   start_times = np.array([n.start_time for n in ns.notes])
@@ -64,6 +62,11 @@ def get_z_notes(start_times, z_instruments, t_instruments):
   z_notes = []
   for t in start_times:
     idx = np.searchsorted(t_instruments, t, side='left') - 1
+
+    # Handles out of bounds errors.
+    if idx.item() == t_instruments.size - 1:
+      idx -= 1
+
     t_left = t_instruments[idx]
     t_right = t_instruments[idx + 1]
     interp = (t - t_left) / (t_right - t_left)

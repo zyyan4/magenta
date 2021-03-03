@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,17 +13,14 @@
 # limitations under the License.
 
 """Tests for Magenta's Tensor2Tensor modalities."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 from magenta.models.score2perf import modalities
 import numpy as np
 from tensor2tensor.layers import common_hparams
 from tensor2tensor.utils import expert_utils
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+
+tf.disable_v2_behavior()
 
 
 class ModalitiesTest(tf.test.TestCase):

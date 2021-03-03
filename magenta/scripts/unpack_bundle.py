@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ $ python magenta/scripts/unpack_bundle.py \
 --bundle_path 'path' --checkpoint_path 'path'
 """
 
-from magenta.music import sequence_generator_bundle
-import tensorflow as tf
+from magenta.models.shared import sequence_generator_bundle
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('bundle_path', '',
@@ -44,4 +44,5 @@ def main(_):
     f.write(bundle.metagraph_file)
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.app.run()

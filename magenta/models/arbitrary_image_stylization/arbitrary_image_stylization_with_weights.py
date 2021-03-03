@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,20 +20,14 @@ identity transform parameters and the style parameters for the style image) and
 saves them to the given output_dir.
 See run_interpolation_with_identity.sh for example usage.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import os
 
 from magenta.models.arbitrary_image_stylization import arbitrary_image_stylization_build_model as build_model
 from magenta.models.image_stylization import image_utils
 import numpy as np
-import tensorflow as tf
-
-slim = tf.contrib.slim
+import tensorflow.compat.v1 as tf
+import tf_slim as slim
 
 flags = tf.flags
 flags.DEFINE_string('checkpoint', None, 'Path to the model checkpoint.')
@@ -43,10 +37,10 @@ flags.DEFINE_string('content_images_paths', None, 'Paths to the content images'
                     'for evaluation.')
 flags.DEFINE_string('output_dir', None, 'Output directory.')
 flags.DEFINE_integer('image_size', 256, 'Image size.')
-flags.DEFINE_boolean('content_square_crop', False, 'Wheather to center crop'
+flags.DEFINE_boolean('content_square_crop', False, 'Whether to center crop'
                      'the content image to be a square or not.')
 flags.DEFINE_integer('style_image_size', 256, 'Style image size.')
-flags.DEFINE_boolean('style_square_crop', False, 'Wheather to center crop'
+flags.DEFINE_boolean('style_square_crop', False, 'Whether to center crop'
                      'the style image to be a square or not.')
 flags.DEFINE_integer('maximum_styles_to_evaluate', 1024, 'Maximum number of'
                      'styles to evaluate.')
@@ -180,6 +174,7 @@ def main(unused_argv=None):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 if __name__ == '__main__':

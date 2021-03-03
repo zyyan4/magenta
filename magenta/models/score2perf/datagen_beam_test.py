@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,22 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# pylint: skip-file
-# TODO(iansimon): Enable when Apache Beam supports Python 3.
 """Tests for Score2Perf datagen using beam."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tempfile
 
-import apache_beam as beam
-from magenta.models.score2perf import datagen_beam
 from magenta.models.score2perf import music_encoders
-from magenta.music import testing_lib
-from magenta.protobuf import music_pb2
-import tensorflow as tf
+from note_seq import testing_lib
+from note_seq.protobuf import music_pb2
+import pytest
+import tensorflow.compat.v1 as tf
+
+# Skip this file if beam cannot be imported.
+beam = pytest.importorskip('apache_beam')
+
+# pylint: disable=g-bad-import-order,g-import-not-at-top,wrong-import-position,ungrouped-imports
+from magenta.models.score2perf import datagen_beam
+# pylint: enable=g-bad-import-order,g-import-not-at-top,wrong-import-position,ungrouped-imports
+
+tf.disable_v2_behavior()
 
 
 class GenerateExamplesTest(tf.test.TestCase):

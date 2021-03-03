@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
 
 import copy
 
-from magenta.music import constants
-from magenta.music import sequences_lib
 from magenta.pipelines import pipeline
 from magenta.pipelines import statistics
-from magenta.protobuf import music_pb2
-import tensorflow as tf
+from note_seq import constants
+from note_seq import sequences_lib
+from note_seq.protobuf import music_pb2
+import tensorflow.compat.v1 as tf
 
 # Shortcut to chord symbol text annotation type.
 CHORD_SYMBOL = music_pb2.NoteSequence.TextAnnotation.CHORD_SYMBOL

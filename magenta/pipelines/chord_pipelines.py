@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,16 +15,16 @@
 """Data processing pipelines for chord progressions."""
 import copy
 
-from magenta.music import chord_symbols_lib
-from magenta.music import ChordProgression
-from magenta.music import chords_lib
-from magenta.music import events_lib
-from magenta.music import sequences_lib
-from magenta.music.chords_lib import CoincidentChordsError
 from magenta.pipelines import pipeline
 from magenta.pipelines import statistics
-from magenta.protobuf import music_pb2
-import tensorflow as tf
+from note_seq import chord_symbols_lib
+from note_seq import ChordProgression
+from note_seq import chords_lib
+from note_seq import events_lib
+from note_seq import sequences_lib
+from note_seq.chords_lib import CoincidentChordsError
+from note_seq.protobuf import music_pb2
+import tensorflow.compat.v1 as tf
 
 
 class ChordsExtractor(pipeline.Pipeline):

@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,8 @@
 """Pipeline for event sequences."""
 
 from magenta.pipelines import pipeline
-import tensorflow as tf
+from magenta.pipelines import pipelines_common
+import tensorflow.compat.v1 as tf
 
 
 class EncoderPipeline(pipeline.Pipeline):
@@ -36,5 +37,6 @@ class EncoderPipeline(pipeline.Pipeline):
     self._encoder_decoder = encoder_decoder
 
   def transform(self, seq):
-    encoded = self._encoder_decoder.encode(seq)
+    encoded = pipelines_common.make_sequence_example(
+        *self._encoder_decoder.encode(seq))
     return [encoded]

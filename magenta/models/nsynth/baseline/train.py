@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +13,11 @@
 # limitations under the License.
 
 """Trains model using tf.slim."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from magenta.models.nsynth import reader
 from magenta.models.nsynth import utils
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+import tf_slim as slim
 
-slim = tf.contrib.slim
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string("master",
@@ -98,4 +93,5 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
+  tf.disable_v2_behavior()
   tf.app.run()

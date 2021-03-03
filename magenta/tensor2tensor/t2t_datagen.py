@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,13 +16,10 @@
 
 # Registers all Magenta problems with Tensor2Tensor.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from magenta.tensor2tensor import problems  # pylint: disable=unused-import
+from magenta.tensor2tensor import models  # pylint: disable=unused-import
+from magenta.tensor2tensor import problems_datagen  # pylint: disable=unused-import
 from tensor2tensor.bin import t2t_datagen
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 def main(argv):
@@ -30,6 +27,7 @@ def main(argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.logging.set_verbosity(tf.logging.INFO)
   tf.app.run(main)
 

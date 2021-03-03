@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Generator and discriminator for a progressive GAN model.
 
 See https://arxiv.org/abs/1710.10196 for details about the model.
@@ -20,14 +21,10 @@ See https://github.com/tkarras/progressive_growing_of_gans for the original
 theano implementation.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 from magenta.models.gansynth.lib import layers
-import six
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+import tf_slim
 
 
 class ResolutionSchedule(object):
@@ -346,13 +343,13 @@ def generator(z,
         activation=to_rgb_activation,
         scope='to_rgb')
 
-  he_init = tf.contrib.layers.variance_scaling_initializer()
+  he_init = tf_slim.variance_scaling_initializer()
 
   end_points = {}
 
   with tf.variable_scope(scope, reuse=reuse):
     with tf.name_scope('input'):
-      x = tf.contrib.layers.flatten(z)
+      x = tf_slim.flatten(z)
       end_points['latent_vector'] = x
 
     with tf.variable_scope(block_name(1)):
@@ -423,7 +420,7 @@ def generator(z,
         outputs.append(lod * alpha)
 
     predictions = tf.add_n(outputs)
-    batch_size = z.shape[0].value
+    batch_size = int(z.shape[0])
     predictions.set_shape([batch_size, final_h, final_w, colors])
     end_points['predictions'] = predictions
 
@@ -458,7 +455,7 @@ def discriminator(x,
   Returns:
     A `Tensor` of model output and a dictionary of model end points.
   """
-  he_init = tf.contrib.layers.variance_scaling_initializer()
+  he_init = tf_slim.variance_scaling_initializer()
 
   if num_blocks is None:
     num_blocks = resolution_schedule.num_resolutions
@@ -511,7 +508,7 @@ def discriminator(x,
       lods.append((lod, alpha))
 
     lods_iter = iter(lods)
-    x, _ = six.next(lods_iter)
+    x, _ = next(lods_iter)
     for block_id in range(num_blocks, 1, -1):
       with tf.variable_scope(block_name(block_id)):
         if simple_arch:
@@ -528,7 +525,7 @@ def discriminator(x,
           x = _conv2d('conv0', x, kernel_size, num_filters_fn(block_id))
           x = _conv2d('conv1', x, kernel_size, num_filters_fn(block_id - 1))
           x = resolution_schedule.downscale(x, resolution_schedule.scale_base)
-        lod, alpha = six.next(lods_iter)
+        lod, alpha = next(lods_iter)
         x = alpha * lod + (1.0 - alpha) * x
 
     with tf.variable_scope(block_name(1)):

@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Constructs a Piano Genie model."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from magenta.contrib import rnn as contrib_rnn
 from magenta.models.piano_genie import util
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+
+rnn = tf.nn.rnn_cell
 
 
 def simple_lstm_encoder(features,
@@ -36,11 +36,11 @@ def simple_lstm_encoder(features,
     x = tf.layers.dense(x, rnn_nunits)
 
   if rnn_celltype == "lstm":
-    celltype = tf.contrib.rnn.LSTMBlockCell
+    celltype = contrib_rnn.LSTMBlockCell
   else:
     raise NotImplementedError()
 
-  cell = tf.contrib.rnn.MultiRNNCell(
+  cell = rnn.MultiRNNCell(
       [celltype(rnn_nunits) for _ in range(rnn_nlayers)])
 
   with tf.variable_scope("rnn"):
@@ -78,11 +78,11 @@ def simple_lstm_decoder(features,
     x = tf.layers.dense(x, rnn_nunits)
 
   if rnn_celltype == "lstm":
-    celltype = tf.contrib.rnn.LSTMBlockCell
+    celltype = contrib_rnn.LSTMBlockCell
   else:
     raise NotImplementedError()
 
-  cell = tf.contrib.rnn.MultiRNNCell(
+  cell = rnn.MultiRNNCell(
       [celltype(rnn_nunits) for _ in range(rnn_nlayers)])
 
   with tf.variable_scope("rnn"):
@@ -194,7 +194,7 @@ def build_genie_model(feat_dict,
 
   # Quantized step embeddings with VQ-VAE
   if cfg.stp_emb_vq:
-    import sonnet as snt  # pylint:disable=g-import-not-at-top
+    import sonnet as snt  # pylint:disable=g-import-not-at-top,import-outside-toplevel
     with tf.variable_scope("stp_emb_vq"):
       with tf.variable_scope("pre_vq"):
         # pre_vq_encoding is tf.float32 of [batch_size, seq_len, embedding_dim]

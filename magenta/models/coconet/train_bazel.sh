@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,13 +17,12 @@
 set -x
 set -e
 
-# Change this to dir for saving experiment logs.
+# Change this to directory where you want to save experiment logs:
 logdir=$HOME/logs
-# Change this to where data is loaded from.
-data_dir="testdata"
+# Change this to directory where data is loaded from:
 data_dir=$HOME/data/
 # Change this to your dataset class, which can be defined in lib_data.py.
-dataset=TestData
+dataset=Jsb16thSeparated
 
 # Data preprocessing.
 crop_piece_len=32

@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Pipeline to create Pianoroll dataset."""
 
-import magenta.music as mm
-from magenta.music import PianorollSequence
-from magenta.music import sequences_lib
 from magenta.pipelines import dag_pipeline
 from magenta.pipelines import event_sequence_pipeline
 from magenta.pipelines import note_sequence_pipelines
 from magenta.pipelines import pipeline
 from magenta.pipelines import pipelines_common
 from magenta.pipelines import statistics
-from magenta.protobuf import music_pb2
+from note_seq import PianorollSequence
+from note_seq import sequences_lib
+from note_seq.protobuf import music_pb2
 
 
 class PianorollSequenceExtractor(pipeline.Pipeline):
@@ -32,7 +32,7 @@ class PianorollSequenceExtractor(pipeline.Pipeline):
   def __init__(self, min_steps, max_steps, name=None):
     super(PianorollSequenceExtractor, self).__init__(
         input_type=music_pb2.NoteSequence,
-        output_type=mm.PianorollSequence,
+        output_type=PianorollSequence,
         name=name)
     self._min_steps = min_steps
     self._max_steps = max_steps
@@ -59,7 +59,7 @@ def get_pipeline(config, min_steps, max_steps, eval_ratio):
     A pipeline.Pipeline instance.
   """
   # Transpose up to a major third in either direction.
-  transposition_range = range(-4, 5)
+  transposition_range = list(range(-4, 5))
 
   partitioner = pipelines_common.RandomPartition(
       music_pb2.NoteSequence,
@@ -78,7 +78,8 @@ def get_pipeline(config, min_steps, max_steps, eval_ratio):
         min_steps=min_steps, max_steps=max_steps,
         name='PianorollExtractor_' + mode)
     encoder_pipeline = event_sequence_pipeline.EncoderPipeline(
-        mm.PianorollSequence, config.encoder_decoder,
+        PianorollSequence,
+        config.encoder_decoder,
         name='EncoderPipeline_' + mode)
 
     dag[time_change_splitter] = partitioner[mode + '_pianoroll_tracks']
@@ -146,7 +147,7 @@ def extract_pianoroll_sequences(
     programs.add(note.program)
   if len(programs) > 1:
     stats['pianoroll_tracks_discarded_more_than_1_program'].increment()
-    return [], stats.values()
+    return [], list(stats.values())
 
   # Translate the quantized sequence into a PianorollSequence.
   pianoroll_seq = PianorollSequence(quantized_sequence=quantized_sequence,
@@ -166,4 +167,4 @@ def extract_pianoroll_sequences(
     pianoroll_seqs.append(pianoroll_seq)
     stats['pianoroll_track_lengths_in_bars'].increment(
         num_steps // steps_per_bar)
-  return pianoroll_seqs, stats.values()
+  return pianoroll_seqs, list(stats.values())

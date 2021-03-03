@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import ntpath
 import os
 import random
 import shutil
+import sys
 
 PARSER = argparse.ArgumentParser(description='')
 PARSER.add_argument(
@@ -66,7 +67,7 @@ def random_pick(path_in, path_out, limit, delete):
   """
   if path_in == path_out:
     print('path in == path out, that is not allowed, quiting')
-    quit()
+    sys.exit()
 
   path = '{}/*'.format(path_in)
   print('looking for all files in', path)

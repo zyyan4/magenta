@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +13,8 @@
 # limitations under the License.
 
 """SketchRNN RNN definition."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 def orthogonal(shape):
@@ -56,7 +51,7 @@ def lstm_ortho_initializer(scale=1.0):
   return _initializer
 
 
-class LSTMCell(tf.contrib.rnn.RNNCell):
+class LSTMCell(tf.nn.rnn_cell.RNNCell):
   """Vanilla LSTM cell.
 
   Uses ortho initializer, and also recurrent dropout without memory loss
@@ -232,7 +227,7 @@ def super_linear(x,
     return tf.matmul(x, w)
 
 
-class LayerNormLSTMCell(tf.contrib.rnn.RNNCell):
+class LayerNormLSTMCell(tf.nn.rnn_cell.RNNCell):
   """Layer-Norm, with Ortho Init. and Recurrent Dropout without Memory Loss.
 
   https://arxiv.org/abs/1607.06450 - Layer Norm
@@ -309,7 +304,7 @@ class LayerNormLSTMCell(tf.contrib.rnn.RNNCell):
     return new_h, tf.concat([new_h, new_c], 1)
 
 
-class HyperLSTMCell(tf.contrib.rnn.RNNCell):
+class HyperLSTMCell(tf.nn.rnn_cell.RNNCell):
   """HyperLSTM with Ortho Init, Layer Norm, Recurrent Dropout, no Memory Loss.
 
   https://arxiv.org/abs/1609.09106

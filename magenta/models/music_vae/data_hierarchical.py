@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,24 +13,18 @@
 # limitations under the License.
 
 """MusicVAE data library for hierarchical converters."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
+import random
 
 from magenta.models.music_vae import data
-import magenta.music as mm
-from magenta.music import chords_lib
-from magenta.music import performance_lib
-from magenta.music import sequences_lib
 from magenta.pipelines import performance_pipeline
-from magenta.protobuf import music_pb2
+import note_seq
+from note_seq import chords_lib
+from note_seq import performance_lib
 import numpy as np
-from tensorflow.python.util import nest  # pylint:disable=g-direct-tensorflow-import
+import tensorflow.compat.v1 as tf
 
-CHORD_SYMBOL = music_pb2.NoteSequence.TextAnnotation.CHORD_SYMBOL
+CHORD_SYMBOL = note_seq.NoteSequence.TextAnnotation.CHORD_SYMBOL
 
 
 def split_performance(performance, steps_per_segment, new_performance_fn,
@@ -108,11 +102,11 @@ def split_performance(performance, steps_per_segment, new_performance_fn,
       sequence = segments[i].to_sequence()
       if isinstance(segments[i], performance_lib.MetricPerformance):
         # Performance is quantized relative to meter.
-        quantized_sequence = sequences_lib.quantize_note_sequence(
+        quantized_sequence = note_seq.quantize_note_sequence(
             sequence, steps_per_quarter=segments[i].steps_per_quarter)
       else:
         # Performance is quantized with absolute timing.
-        quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        quantized_sequence = note_seq.quantize_note_sequence_absolute(
             sequence, steps_per_second=segments[i].steps_per_second)
       segments[i] = new_performance_fn(
           quantized_sequence=quantized_sequence,
@@ -120,6 +114,19 @@ def split_performance(performance, steps_per_segment, new_performance_fn,
       segments[i].set_length(steps_per_segment)
 
   return segments
+
+
+def remove_padding(max_lengths, samples, controls=None):
+  """Remove padding."""
+  if not max_lengths:
+    return samples, controls
+  unpadded_samples = [sample.reshape(max_lengths + [-1])
+                      for sample in samples]
+  unpadded_controls = None
+  if controls is not None:
+    unpadded_controls = [control.reshape(max_lengths + [-1])
+                         for control in controls]
+  return unpadded_samples, unpadded_controls
 
 
 class TooLongError(Exception):
@@ -179,7 +186,62 @@ def pad_with_value(array, length, pad_value):
                 constant_values=pad_value)
 
 
-class BaseHierarchicalConverter(data.BaseConverter):
+def hierarchical_pad_tensors(tensors, sample_size, randomize, max_lengths,
+                             end_token, input_depth, output_depth,
+                             control_depth, control_pad_token):
+  """Converts to tensors and adds hierarchical padding, if needed."""
+  sampled_results = data.maybe_sample_items(
+      list(zip(*tensors)), sample_size, randomize)
+  if sampled_results:
+    unpadded_results = data.ConverterTensors(*zip(*sampled_results))
+  else:
+    unpadded_results = data.ConverterTensors()
+  if not max_lengths:
+    return unpadded_results
+
+  # TODO(iansimon): The way control tensors are set in ConverterTensors is
+  # ugly when using a hierarchical converter. Figure out how to clean this up.
+
+  def _hierarchical_pad(input_, output, control):
+    """Pad and flatten hierarchical inputs, outputs, and controls."""
+    # Pad empty segments with end tokens and flatten hierarchy.
+    input_ = tf.nest.flatten(
+        pad_with_element(input_, max_lengths[:-1],
+                         data.np_onehot([end_token], input_depth)))
+    output = tf.nest.flatten(
+        pad_with_element(output, max_lengths[:-1],
+                         data.np_onehot([end_token], output_depth)))
+    length = np.squeeze(np.array([len(x) for x in input_], np.int32))
+
+    # Pad and concatenate flatten hierarchy.
+    input_ = np.concatenate(
+        [pad_with_value(x, max_lengths[-1], 0) for x in input_])
+    output = np.concatenate(
+        [pad_with_value(x, max_lengths[-1], 0) for x in output])
+
+    if np.size(control):
+      control = tf.nest.flatten(
+          pad_with_element(control, max_lengths[:-1],
+                           data.np_onehot([control_pad_token], control_depth)))
+      control = np.concatenate(
+          [pad_with_value(x, max_lengths[-1], 0) for x in control])
+
+    return input_, output, control, length
+
+  padded_results = []
+  for i, o, c, _ in zip(*unpadded_results):
+    try:
+      padded_results.append(_hierarchical_pad(i, o, c))
+    except TooLongError:
+      continue
+
+  if padded_results:
+    return data.ConverterTensors(*zip(*padded_results))
+  else:
+    return data.ConverterTensors()
+
+
+class BaseHierarchicalNoteSequenceConverter(data.BaseNoteSequenceConverter):
   """Base class for data converters for hierarchical sequences.
 
   Output sequences will be padded hierarchically and flattened if `max_lengths`
@@ -197,104 +259,6 @@ class BaseHierarchicalConverter(data.BaseConverter):
     -`_to_items`
   """
 
-  def __init__(self, input_depth, input_dtype, output_depth, output_dtype,
-               control_depth=0, control_dtype=np.bool, control_pad_token=None,
-               end_token=None, max_lengths=None, max_tensors_per_item=None,
-               str_to_item_fn=lambda s: s, flat_output=False):
-    self._control_pad_token = control_pad_token
-    self._max_lengths = [] if max_lengths is None else max_lengths
-    if max_lengths and not flat_output:
-      length_shape = (np.prod(max_lengths[:-1]),)
-    else:
-      length_shape = ()
-
-    super(BaseHierarchicalConverter, self).__init__(
-        input_depth=input_depth,
-        input_dtype=input_dtype,
-        output_depth=output_depth,
-        output_dtype=output_dtype,
-        control_depth=control_depth,
-        control_dtype=control_dtype,
-        end_token=end_token,
-        max_tensors_per_item=max_tensors_per_item,
-        str_to_item_fn=str_to_item_fn,
-        length_shape=length_shape)
-
-  def to_tensors(self, item):
-    """Converts to tensors and adds hierarchical padding, if needed."""
-    unpadded_results = super(BaseHierarchicalConverter, self).to_tensors(item)
-    if not self._max_lengths:
-      return unpadded_results
-
-    # TODO(iansimon): The way control tensors are set in ConverterTensors is
-    # ugly when using a hierarchical converter. Figure out how to clean this up.
-
-    def _hierarchical_pad(input_, output, control):
-      """Pad and flatten hierarchical inputs, outputs, and controls."""
-      # Pad empty segments with end tokens and flatten hierarchy.
-      input_ = nest.flatten(pad_with_element(
-          input_, self._max_lengths[:-1],
-          data.np_onehot([self.end_token], self.input_depth)))
-      output = nest.flatten(pad_with_element(
-          output, self._max_lengths[:-1],
-          data.np_onehot([self.end_token], self.output_depth)))
-      length = np.squeeze(np.array([len(x) for x in input_], np.int32))
-
-      # Pad and concatenate flatten hierarchy.
-      input_ = np.concatenate(
-          [pad_with_value(x, self._max_lengths[-1], 0) for x in input_])
-      output = np.concatenate(
-          [pad_with_value(x, self._max_lengths[-1], 0) for x in output])
-
-      if np.size(control):
-        control = nest.flatten(pad_with_element(
-            control, self._max_lengths[:-1],
-            data.np_onehot(
-                [self._control_pad_token], self.control_depth)))
-        control = np.concatenate(
-            [pad_with_value(x, self._max_lengths[-1], 0) for x in control])
-
-      return input_, output, control, length
-
-    padded_results = []
-    for i, o, c, _ in zip(*unpadded_results):
-      try:
-        padded_results.append(_hierarchical_pad(i, o, c))
-      except TooLongError:
-        continue
-
-    if padded_results:
-      return data.ConverterTensors(*zip(*padded_results))
-    else:
-      return data.ConverterTensors()
-
-  def to_items(self, samples, controls=None):
-    """Removes hierarchical padding and then converts samples into items."""
-    # First, remove padding.
-    if self._max_lengths:
-      unpadded_samples = [sample.reshape(self._max_lengths + [-1])
-                          for sample in samples]
-      if controls is not None:
-        unpadded_controls = [control.reshape(self._max_lengths + [-1])
-                             for control in controls]
-      else:
-        unpadded_controls = None
-    else:
-      unpadded_samples = samples
-      unpadded_controls = controls
-
-    return super(BaseHierarchicalConverter, self).to_items(
-        unpadded_samples, unpadded_controls)
-
-
-class BaseHierarchicalNoteSequenceConverter(BaseHierarchicalConverter):
-  """Base class for hierarchical NoteSequence data converters.
-
-  Inheriting classes must implement the following abstract methods:
-    -`_to_tensors`
-    -`_to_notesequences`
-  """
-
   __metaclass__ = abc.ABCMeta
 
   def __init__(self, input_depth, input_dtype, output_depth, output_dtype,
@@ -302,80 +266,30 @@ class BaseHierarchicalNoteSequenceConverter(BaseHierarchicalConverter):
                control_pad_token=None, end_token=None,
                max_lengths=None, presplit_on_time_changes=True,
                max_tensors_per_notesequence=None, flat_output=False):
-    """Initializes BaseNoteSequenceConverter.
-
-    Args:
-      input_depth: Depth of final dimension of input (encoder) tensors.
-      input_dtype: DType of input (encoder) tensors.
-      output_depth: Depth of final dimension of output (decoder) tensors.
-      output_dtype: DType of output (decoder) tensors.
-      control_depth: Depth of final dimension of control tensors, or zero if not
-          conditioning on control tensors.
-      control_dtype: DType of control tensors.
-      control_pad_token: Corresponding control token to use when padding
-          input/output sequences with `end_token`.
-      end_token: Optional end token.
-      max_lengths: The maximum length at each level of the nested list to
-        pad to.
-      presplit_on_time_changes: Whether to split NoteSequence on time changes
-        before converting.
-      max_tensors_per_notesequence: The maximum number of outputs to return
-        for each NoteSequence.
-      flat_output: If True, the output of the converter should be flattened
-        before being sent to the model. Useful for testing with a
-        non-hierarchical model.
-    """
-    super(BaseHierarchicalNoteSequenceConverter, self).__init__(
-        input_depth, input_dtype, output_depth, output_dtype,
-        control_depth, control_dtype, control_pad_token, end_token,
-        max_lengths=max_lengths,
-        max_tensors_per_item=max_tensors_per_notesequence,
-        str_to_item_fn=music_pb2.NoteSequence.FromString,
-        flat_output=flat_output)
-
-    self._presplit_on_time_changes = presplit_on_time_changes
-
-  @property
-  def max_tensors_per_notesequence(self):
-    return self.max_tensors_per_item
-
-  @max_tensors_per_notesequence.setter
-  def max_tensors_per_notesequence(self, value):
-    self.max_tensors_per_item = value
-
-  @abc.abstractmethod
-  def _to_notesequences(self, samples, controls=None):
-    """Implementation that decodes model samples into list of NoteSequences."""
-    return
-
-  def to_notesequences(self, samples, controls=None):
-    """Python method that decodes samples into list of NoteSequences."""
-    return self.to_items(samples, controls)
-
-  def to_tensors(self, note_sequence):
-    """Python method that converts `note_sequence` into list of tensors."""
-    note_sequences = data.preprocess_notesequence(
-        note_sequence, self._presplit_on_time_changes)
-
-    results = []
-    for ns in note_sequences:
-      results.append(
-          super(BaseHierarchicalNoteSequenceConverter, self).to_tensors(ns))
-    return self._combine_to_tensor_results(results)
-
-  def _to_items(self, samples, controls=None):
-    """Python method that decodes samples into list of NoteSequences."""
-    if controls is None:
-      return self._to_notesequences(samples)
+    self._control_pad_token = control_pad_token
+    self._max_lengths = [] if max_lengths is None else max_lengths
+    if max_lengths and not flat_output:
+      length_shape = (np.prod(max_lengths[:-1]),)
     else:
-      return self._to_notesequences(samples, controls)
+      length_shape = ()
+    super(BaseHierarchicalNoteSequenceConverter, self).__init__(
+        input_depth=input_depth,
+        input_dtype=input_dtype,
+        output_depth=output_depth,
+        output_dtype=output_dtype,
+        control_depth=control_depth,
+        control_dtype=control_dtype,
+        end_token=end_token,
+        max_tensors_per_notesequence=max_tensors_per_notesequence,
+        length_shape=length_shape,
+        presplit_on_time_changes=presplit_on_time_changes)
 
 
 class MultiInstrumentPerformanceConverter(
     BaseHierarchicalNoteSequenceConverter):
   """Converts to/from multiple-instrument metric performances.
 
-  Args:
+  Attributes:
     num_velocity_bins: Number of velocity bins.
     max_tensors_per_notesequence: The maximum number of outputs to return
         for each NoteSequence.
@@ -392,6 +306,8 @@ class MultiInstrumentPerformanceConverter(
         sequences longer than the hop size.
     chord_encoding: An instantiated OneHotEncoding object to use for encoding
         chords on which to condition, or None if not conditioning on chords.
+    drop_tracks_and_truncate: Randomly drop extra tracks and truncate the event
+        sequence.
   """
 
   def __init__(self,
@@ -408,13 +324,16 @@ class MultiInstrumentPerformanceConverter(
                min_pitch=performance_lib.MIN_MIDI_PITCH,
                max_pitch=performance_lib.MAX_MIDI_PITCH,
                first_subsequence_only=False,
-               chord_encoding=None):
+               chord_encoding=None,
+               drop_tracks_and_truncate=False):
     max_shift_steps = (performance_lib.DEFAULT_MAX_SHIFT_QUARTERS *
                        steps_per_quarter)
 
-    self._performance_encoding = mm.PerformanceOneHotEncoding(
-        num_velocity_bins=num_velocity_bins, max_shift_steps=max_shift_steps,
-        min_pitch=min_pitch, max_pitch=max_pitch)
+    self._performance_encoding = note_seq.PerformanceOneHotEncoding(
+        num_velocity_bins=num_velocity_bins,
+        max_shift_steps=max_shift_steps,
+        min_pitch=min_pitch,
+        max_pitch=max_pitch)
     self._chord_encoding = chord_encoding
 
     self._num_velocity_bins = num_velocity_bins
@@ -429,6 +348,7 @@ class MultiInstrumentPerformanceConverter(
     self._min_pitch = min_pitch
     self._max_pitch = max_pitch
     self._first_subsequence_only = first_subsequence_only
+    self._drop_tracks_and_truncate = drop_tracks_and_truncate
 
     self._max_num_chunks = hop_size_bars // chunk_size_bars
     self._max_steps_truncate = (
@@ -436,7 +356,8 @@ class MultiInstrumentPerformanceConverter(
 
     # Each encoded track will begin with a program specification token
     # (with one extra program for drums).
-    num_program_tokens = mm.MAX_MIDI_PROGRAM - mm.MIN_MIDI_PROGRAM + 2
+    num_program_tokens = (
+        note_seq.MAX_MIDI_PROGRAM - note_seq.MIN_MIDI_PROGRAM + 2)
     end_token = self._performance_encoding.num_classes + num_program_tokens
     depth = end_token + 1
 
@@ -447,7 +368,7 @@ class MultiInstrumentPerformanceConverter(
       control_pad_token = None
     else:
       control_depth = chord_encoding.num_classes
-      control_pad_token = chord_encoding.encode_event(mm.NO_CHORD)
+      control_pad_token = chord_encoding.encode_event(note_seq.NO_CHORD)
 
     super(MultiInstrumentPerformanceConverter, self).__init__(
         input_depth=depth,
@@ -473,6 +394,10 @@ class MultiInstrumentPerformanceConverter(
         max_steps_truncate=self._max_steps_truncate,
         num_velocity_bins=self._num_velocity_bins,
         split_instruments=True)
+
+    if (self._drop_tracks_and_truncate and
+        len(tracks) > self._max_num_instruments):
+      tracks = random.sample(tracks, self._max_num_instruments)
 
     # Reject sequences with too few instruments.
     if not (self._min_num_instruments <= len(tracks) <=
@@ -506,13 +431,19 @@ class MultiInstrumentPerformanceConverter(
 
       assert len(track_chunks) == self._max_num_chunks
 
+      if self._drop_tracks_and_truncate:
+        for i in range(len(track_chunks)):
+          track_chunks[i].truncate(self._max_events_per_instrument - 2)
+
       track_chunk_lengths = [len(track_chunk) for track_chunk in track_chunks]
       # Each track chunk needs room for program token and end token.
       if not all(l <= self._max_events_per_instrument - 2
                  for l in track_chunk_lengths):
         return [], []
-      if not all(mm.MIN_MIDI_PROGRAM <= t.program <= mm.MAX_MIDI_PROGRAM
-                 for t in track_chunks if not t.is_drum):
+      if not all(
+          note_seq.MIN_MIDI_PROGRAM <= t.program <= note_seq.MAX_MIDI_PROGRAM
+          for t in track_chunks
+          if not t.is_drum):
         return [], []
 
       total_length += sum(track_chunk_lengths)
@@ -525,7 +456,7 @@ class MultiInstrumentPerformanceConverter(
     if total_length < self._min_total_events:
       return [], []
 
-    num_programs = mm.MAX_MIDI_PROGRAM - mm.MIN_MIDI_PROGRAM + 1
+    num_programs = note_seq.MAX_MIDI_PROGRAM - note_seq.MIN_MIDI_PROGRAM + 1
 
     chunk_tensors = []
     chunk_chord_tensors = []
@@ -578,7 +509,7 @@ class MultiInstrumentPerformanceConverter(
                 track_chord_tokens, self.control_depth, self.control_dtype)
             track_chord_tensors.append(encoded_track_chords)
 
-        except (mm.ChordSymbolError, mm.ChordEncodingError):
+        except (note_seq.ChordSymbolError, note_seq.ChordEncodingError):
           return [], []
 
         chunk_chord_tensors.append(track_chord_tensors)
@@ -587,9 +518,9 @@ class MultiInstrumentPerformanceConverter(
 
     return chunk_tensors, chunk_chord_tensors
 
-  def _to_tensors(self, note_sequence):
+  def _to_tensors_fn(self, note_sequence):
     # Performance sequences require sustain to be correctly interpreted.
-    note_sequence = sequences_lib.apply_sustain_control_changes(note_sequence)
+    note_sequence = note_seq.apply_sustain_control_changes(note_sequence)
 
     if self._chord_encoding and not any(
         ta.annotation_type == CHORD_SYMBOL
@@ -597,17 +528,18 @@ class MultiInstrumentPerformanceConverter(
       try:
         # Quantize just for the purpose of chord inference.
         # TODO(iansimon): Allow chord inference in unquantized sequences.
-        quantized_sequence = mm.quantize_note_sequence(
+        quantized_sequence = note_seq.quantize_note_sequence(
             note_sequence, self._steps_per_quarter)
-        if (mm.steps_per_bar_in_quantized_sequence(quantized_sequence) !=
+        if (note_seq.steps_per_bar_in_quantized_sequence(quantized_sequence) !=
             self._steps_per_bar):
           return data.ConverterTensors()
 
         # Infer chords in quantized sequence.
-        mm.infer_chords_for_sequence(quantized_sequence)
+        note_seq.infer_chords_for_sequence(quantized_sequence)
 
-      except (mm.BadTimeSignatureError, mm.NonIntegerStepsPerBarError,
-              mm.NegativeTimeError, mm.ChordInferenceError):
+      except (note_seq.BadTimeSignatureError,
+              note_seq.NonIntegerStepsPerBarError, note_seq.NegativeTimeError,
+              note_seq.ChordInferenceError):
         return data.ConverterTensors()
 
       # Copy inferred chords back to original sequence.
@@ -621,14 +553,13 @@ class MultiInstrumentPerformanceConverter(
     if note_sequence.tempos:
       quarters_per_minute = note_sequence.tempos[0].qpm
     else:
-      quarters_per_minute = mm.DEFAULT_QUARTERS_PER_MINUTE
+      quarters_per_minute = note_seq.DEFAULT_QUARTERS_PER_MINUTE
     quarters_per_bar = self._steps_per_bar / self._steps_per_quarter
     hop_size_quarters = quarters_per_bar * self._hop_size_bars
     hop_size_seconds = 60.0 * hop_size_quarters / quarters_per_minute
 
     # Split note sequence by bar hop size (in seconds).
-    subsequences = sequences_lib.split_note_sequence(
-        note_sequence, hop_size_seconds)
+    subsequences = note_seq.split_note_sequence(note_sequence, hop_size_seconds)
 
     if self._first_subsequence_only and len(subsequences) > 1:
       return data.ConverterTensors()
@@ -639,13 +570,13 @@ class MultiInstrumentPerformanceConverter(
     for subsequence in subsequences:
       # Quantize this subsequence.
       try:
-        quantized_subsequence = mm.quantize_note_sequence(
+        quantized_subsequence = note_seq.quantize_note_sequence(
             subsequence, self._steps_per_quarter)
-        if (mm.steps_per_bar_in_quantized_sequence(quantized_subsequence) !=
-            self._steps_per_bar):
+        if (note_seq.steps_per_bar_in_quantized_sequence(quantized_subsequence)
+            != self._steps_per_bar):
           return data.ConverterTensors()
-      except (mm.BadTimeSignatureError, mm.NonIntegerStepsPerBarError,
-              mm.NegativeTimeError):
+      except (note_seq.BadTimeSignatureError,
+              note_seq.NonIntegerStepsPerBarError, note_seq.NegativeTimeError):
         return data.ConverterTensors()
 
       # Convert the quantized subsequence to tensors.
@@ -656,18 +587,29 @@ class MultiInstrumentPerformanceConverter(
         if self._chord_encoding:
           sequence_chord_tensors.append(chord_tensors)
 
-    return data.ConverterTensors(
+    tensors = data.ConverterTensors(
         inputs=sequence_tensors, outputs=sequence_tensors,
         controls=sequence_chord_tensors)
+    return hierarchical_pad_tensors(tensors, self.max_tensors_per_notesequence,
+                                    self.is_training, self._max_lengths,
+                                    self.end_token, self.input_depth,
+                                    self.output_depth, self.control_depth,
+                                    self._control_pad_token)
+
+  def to_tensors(self, note_sequence):
+    return data.split_process_and_combine(note_sequence,
+                                          self._presplit_on_time_changes,
+                                          self.max_tensors_per_notesequence,
+                                          self.is_training, self._to_tensors_fn)
 
   def _to_single_notesequence(self, samples, controls):
-    qpm = mm.DEFAULT_QUARTERS_PER_MINUTE
+    qpm = note_seq.DEFAULT_QUARTERS_PER_MINUTE
     seconds_per_step = 60.0 / (self._steps_per_quarter * qpm)
     chunk_size_steps = self._steps_per_bar * self._chunk_size_bars
 
-    seq = music_pb2.NoteSequence()
+    seq = note_seq.NoteSequence()
     seq.tempos.add().qpm = qpm
-    seq.ticks_per_quarter = mm.STANDARD_PPQ
+    seq.ticks_per_quarter = note_seq.STANDARD_PPQ
 
     tracks = [[] for _ in range(self._max_num_instruments)]
     all_timed_chords = []
@@ -698,7 +640,7 @@ class MultiInstrumentPerformanceConverter(
           is_drum = False
         else:
           program = program_tokens[0] - self._performance_encoding.num_classes
-          if program == mm.MAX_MIDI_PROGRAM + 1:
+          if program == note_seq.MAX_MIDI_PROGRAM + 1:
             # This is the drum program.
             program = 0
             is_drum = True
@@ -758,12 +700,12 @@ class MultiInstrumentPerformanceConverter(
 
     return seq
 
-  def _to_notesequences(self, samples, controls=None):
+  def from_tensors(self, samples, controls=None):
+    samples, controls = remove_padding(self._max_lengths, samples, controls)
     output_sequences = []
     for i in range(len(samples)):
       seq = self._to_single_notesequence(
-          samples[i],
-          controls[i] if self._chord_encoding and controls is not None else None
-      )
+          samples[i], controls[i]
+          if self._chord_encoding and controls is not None else None)
       output_sequences.append(seq)
     return output_sequences

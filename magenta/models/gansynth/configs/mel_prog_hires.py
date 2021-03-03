@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ hparams['discriminator_ac_loss_weight'] = 10.0
 hparams['gen_gl_consistency_loss_weight'] = 0.0
 
 # STFT specific
-hparams['dataset_name'] = 'nsynth_tfrecord'
+hparams['dataset_name'] = 'nsynth_tfds'
 hparams['g_fn'] = 'specgram'
 hparams['d_fn'] = 'specgram'
 hparams['scale_mode'] = 'ALL'

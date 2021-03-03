@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Common functions/helpers for the joint model.
 
 This library contains many comman functions and helpers used to train (using
@@ -39,10 +40,6 @@ components are classified in the following categories:
         `prepare_dirs`
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib
 import os
 
@@ -50,7 +47,7 @@ from magenta.models.latent_transfer import common
 from magenta.models.latent_transfer import model_dataspace
 import numpy as np
 from scipy.io import wavfile
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_string(
@@ -73,7 +70,7 @@ class BatchIndexIterator(object):
 
   Args:
     n: An integer indicating total size of dataset.
-    batch_size: An integer indictating size of batch.
+    batch_size: An integer indicating size of batch.
   """
 
   def __init__(self, n, batch_size):
@@ -121,11 +118,11 @@ class InterGroupSamplingIndexIterator(object):
     group_by_label_B: List of lists for data space B. The i-th list indicates
         the non-empty list of indices for data instance with i-th (zero-based)
         label.
-    pairing_number: An integer indictating the umber of paired data to be used.
-    batch_size: An integer indictating size of batch.
+    pairing_number: An integer indicating the umber of paired data to be used.
+    batch_size: An integer indicating size of batch.
   """
 
-  # Variable that in its name has A or B indictating their belonging of one side
+  # Variable that in its name has A or B indicating their belonging of one side
   # of data has name consider to be invalid by pylint so we disable the warning.
   # pylint:disable=invalid-name
   def __init__(self, group_by_label_A, group_by_label_B, pairing_number,
@@ -192,7 +189,7 @@ class GuasssianDataHelper(object):
   Args:
     mu: Mean of data points.
     sigma: Variance of data points. If it is None, it is treated as zeros.
-    batch_size: An integer indictating size of batch.
+    batch_size: An integer indicating size of batch.
   """
 
   def __init__(self, mu, sigma=None):
@@ -229,7 +226,7 @@ class SingleDataIterator(object):
   Args:
     mu: Mean of data points.
     sigma: Variance of data points. If it is None, it is treated as zeros.
-    batch_size: An integer indictating size of batch.
+    batch_size: An integer indicating size of batch.
   """
 
   def __init__(self, mu, sigma, batch_size):
@@ -271,11 +268,11 @@ class PairedDataIterator(object):
     index_grouped_by_label_B: List of lists for data space B. The i-th list
         indicates the non-empty list of indices for data instance with i-th
         (zero-based) label.
-    pairing_number: An integer indictating the umber of paired data to be used.
-    batch_size: An integer indictating size of batch.
+    pairing_number: An integer indicating the umber of paired data to be used.
+    batch_size: An integer indicating size of batch.
   """
 
-  # Variable that in its name has A or B indictating their belonging of one side
+  # Variable that in its name has A or B indicating their belonging of one side
   # of data has name consider to be invalid by pylint so we disable the warning.
   # pylint:disable=invalid-name
 

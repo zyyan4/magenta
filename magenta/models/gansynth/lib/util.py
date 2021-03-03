@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Useful functions."""
 
 import io
@@ -19,7 +20,8 @@ import os
 
 from absl import logging
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+import tf_slim
 
 
 def get_default_embedding_size(num_features):
@@ -28,7 +30,7 @@ def get_default_embedding_size(num_features):
 
 def one_hot_to_embedding(one_hot, embedding_size=None):
   """Gets a dense embedding vector from a one-hot encoding."""
-  num_tokens = one_hot.shape[1].value
+  num_tokens = int(one_hot.shape[1])
   label_id = tf.argmax(one_hot, axis=1)
   if embedding_size is None:
     embedding_size = get_default_embedding_size(num_tokens)
@@ -78,7 +80,7 @@ def compute_data_mean_and_std(data, axis, num_samples):
         tf.local_variables_initializer(),
         tf.tables_initializer()
     ])
-    with tf.contrib.slim.queues.QueueRunners(sess):
+    with tf_slim.queues.QueueRunners(sess):
       data_value = np.concatenate(
           [sess.run(data) for _ in range(num_samples)], axis=0)
   mean = np.mean(data_value, axis=tuple(axis), keepdims=True)

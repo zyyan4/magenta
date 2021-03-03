@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +13,8 @@
 # limitations under the License.
 
 """Compound TensorFlow operations for style transfer."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow as tf
-from tensorflow.python.framework import ops as framework_ops
-from tensorflow.python.ops import variable_scope
-
-slim = tf.contrib.slim
+import tensorflow.compat.v1 as tf
+import tf_slim as slim
 
 
 @slim.add_arg_scope
@@ -259,9 +251,8 @@ def conditional_style_norm(inputs,
     ValueError: if rank or last dimension of `inputs` is undefined, or if the
         input doesn't have 4 dimensions.
   """
-  with variable_scope.variable_scope(
-      scope, 'StyleNorm', [inputs], reuse=reuse) as sc:
-    inputs = framework_ops.convert_to_tensor(inputs)
+  with tf.variable_scope(scope, 'StyleNorm', [inputs], reuse=reuse) as sc:
+    inputs = tf.convert_to_tensor(inputs)
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
     if inputs_rank is None:

@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,20 +13,13 @@
 # limitations under the License.
 
 """Utility functions for NSynth."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib
 import os
 
 import librosa
 import numpy as np
-from six.moves import range  # pylint: disable=redefined-builtin
-import tensorflow as tf
-
-slim = tf.contrib.slim
+import tensorflow.compat.v1 as tf
+import tf_slim as slim
 
 
 def shell_path(path):

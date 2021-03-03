@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,11 +17,12 @@
 import functools
 
 from magenta.models.drums_rnn import drums_rnn_model
-import magenta.music as mm
+from magenta.models.shared import sequence_generator
 from magenta.pipelines import drum_pipelines
+import note_seq
 
 
-class DrumsRnnSequenceGenerator(mm.BaseSequenceGenerator):
+class DrumsRnnSequenceGenerator(sequence_generator.BaseSequenceGenerator):
   """Shared Melody RNN generation code as a SequenceGenerator interface."""
 
   def __init__(self, model, details, steps_per_quarter=4, checkpoint=None,
@@ -44,27 +45,28 @@ class DrumsRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
   def _generate(self, input_sequence, generator_options):
     if len(generator_options.input_sections) > 1:
-      raise mm.SequenceGeneratorError(
+      raise sequence_generator.SequenceGeneratorError(
           'This model supports at most one input_sections message, but got %s' %
           len(generator_options.input_sections))
     if len(generator_options.generate_sections) != 1:
-      raise mm.SequenceGeneratorError(
+      raise sequence_generator.SequenceGeneratorError(
           'This model supports only 1 generate_sections message, but got %s' %
           len(generator_options.generate_sections))
 
     if input_sequence and input_sequence.tempos:
       qpm = input_sequence.tempos[0].qpm
     else:
-      qpm = mm.DEFAULT_QUARTERS_PER_MINUTE
-    steps_per_second = mm.steps_per_quarter_to_steps_per_second(
+      qpm = note_seq.DEFAULT_QUARTERS_PER_MINUTE
+    steps_per_second = note_seq.steps_per_quarter_to_steps_per_second(
         self.steps_per_quarter, qpm)
 
     generate_section = generator_options.generate_sections[0]
     if generator_options.input_sections:
       input_section = generator_options.input_sections[0]
-      primer_sequence = mm.trim_note_sequence(
-          input_sequence, input_section.start_time, input_section.end_time)
-      input_start_step = mm.quantize_to_step(
+      primer_sequence = note_seq.trim_note_sequence(input_sequence,
+                                                    input_section.start_time,
+                                                    input_section.end_time)
+      input_start_step = note_seq.quantize_to_step(
           input_section.start_time, steps_per_second, quantize_cutoff=0.0)
     else:
       primer_sequence = input_sequence
@@ -75,14 +77,14 @@ class DrumsRnnSequenceGenerator(mm.BaseSequenceGenerator):
     else:
       last_end_time = 0
     if last_end_time > generate_section.start_time:
-      raise mm.SequenceGeneratorError(
+      raise sequence_generator.SequenceGeneratorError(
           'Got GenerateSection request for section that is before the end of '
           'the NoteSequence. This model can only extend sequences. Requested '
           'start time: %s, Final note end time: %s' %
           (generate_section.start_time, last_end_time))
 
     # Quantize the priming sequence.
-    quantized_sequence = mm.quantize_note_sequence(
+    quantized_sequence = note_seq.quantize_note_sequence(
         primer_sequence, self.steps_per_quarter)
     # Setting gap_bars to infinite ensures that the entire input will be used.
     extracted_drum_tracks, _ = drum_pipelines.extract_drum_tracks(
@@ -90,12 +92,12 @@ class DrumsRnnSequenceGenerator(mm.BaseSequenceGenerator):
         gap_bars=float('inf'), ignore_is_drum=True)
     assert len(extracted_drum_tracks) <= 1
 
-    start_step = mm.quantize_to_step(
+    start_step = note_seq.quantize_to_step(
         generate_section.start_time, steps_per_second, quantize_cutoff=0.0)
     # Note that when quantizing end_step, we set quantize_cutoff to 1.0 so it
     # always rounds down. This avoids generating a sequence that ends at 5.0
     # seconds when the requested end time is 4.99.
-    end_step = mm.quantize_to_step(
+    end_step = note_seq.quantize_to_step(
         generate_section.end_time, steps_per_second, quantize_cutoff=1.0)
 
     if extracted_drum_tracks and extracted_drum_tracks[0]:
@@ -105,11 +107,11 @@ class DrumsRnnSequenceGenerator(mm.BaseSequenceGenerator):
       # starts 1 step before the request start_step. This will result in 1 step
       # of silence when the drum track is extended below.
       steps_per_bar = int(
-          mm.steps_per_bar_in_quantized_sequence(quantized_sequence))
-      drums = mm.DrumTrack([],
-                           start_step=max(0, start_step - 1),
-                           steps_per_bar=steps_per_bar,
-                           steps_per_quarter=self.steps_per_quarter)
+          note_seq.steps_per_bar_in_quantized_sequence(quantized_sequence))
+      drums = note_seq.DrumTrack([],
+                                 start_step=max(0, start_step - 1),
+                                 steps_per_bar=steps_per_bar,
+                                 steps_per_quarter=self.steps_per_quarter)
 
     # Ensure that the drum track extends up to the step we want to start
     # generating.

@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ from magenta.pipelines import event_sequence_pipeline
 from magenta.pipelines import note_sequence_pipelines
 from magenta.pipelines import pipeline
 from magenta.pipelines import pipelines_common
-from magenta.protobuf import music_pb2
+from note_seq.protobuf import music_pb2
 
 
 class PolyphonicSequenceExtractor(pipeline.Pipeline):

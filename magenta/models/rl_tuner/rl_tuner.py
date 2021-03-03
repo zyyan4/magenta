@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,15 +36,15 @@ import urllib
 from magenta.models.rl_tuner import note_rnn_loader
 from magenta.models.rl_tuner import rl_tuner_eval_metrics
 from magenta.models.rl_tuner import rl_tuner_ops
-from magenta.music import melodies_lib as mlib
-from magenta.music import midi_io
 import matplotlib.pyplot as plt
+from note_seq import melodies_lib as mlib
+from note_seq import midi_io
 import numpy as np
 import scipy.special
 from six.moves import range  # pylint: disable=redefined-builtin
 from six.moves import reload_module  # pylint: disable=redefined-builtin
 from six.moves import urllib  # pylint: disable=redefined-builtin
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 # Note values of special actions.
 NOTE_OFF = 0

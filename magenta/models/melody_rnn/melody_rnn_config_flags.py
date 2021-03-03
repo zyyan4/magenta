@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,21 +14,22 @@
 
 """Provides a class, defaults, and utils for Melody RNN model configuration."""
 
-import magenta
+from magenta.contrib import training as contrib_training
 from magenta.models.melody_rnn import melody_rnn_model
-import tensorflow as tf
+import note_seq
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string(
     'config',
     None,
-    "Which config to use. Must be one of 'basic', 'lookback', or 'attention'. "
-    "Mutually exclusive with `--melody_encoder_decoder`.")
+    'Which config to use. Must be one of \'basic\', \'lookback\', or '
+    '\'attention\'. Mutually exclusive with `--melody_encoder_decoder`.')
 tf.app.flags.DEFINE_string(
     'melody_encoder_decoder',
     None,
-    "Which encoder/decoder to use. Must be one of 'onehot', 'lookback', or "
-    "'key'. Mutually exclusive with `--config`.")
+    'Which encoder/decoder to use. Must be one of \'onehot\', \'lookback\', or '
+    '\'key\'. Mutually exclusive with `--config`.')
 tf.app.flags.DEFINE_string(
     'generator_id',
     None,
@@ -60,8 +61,8 @@ def one_hot_melody_encoder_decoder(min_note, max_note):
   Returns:
     A melody OneHotEventSequenceEncoderDecoder.
   """
-  return magenta.music.OneHotEventSequenceEncoderDecoder(
-      magenta.music.MelodyOneHotEncoding(min_note, max_note))
+  return note_seq.OneHotEventSequenceEncoderDecoder(
+      note_seq.MelodyOneHotEncoding(min_note, max_note))
 
 
 def lookback_melody_encoder_decoder(min_note, max_note):
@@ -74,8 +75,8 @@ def lookback_melody_encoder_decoder(min_note, max_note):
   Returns:
     A melody LookbackEventSequenceEncoderDecoder.
   """
-  return magenta.music.LookbackEventSequenceEncoderDecoder(
-      magenta.music.MelodyOneHotEncoding(min_note, max_note))
+  return note_seq.LookbackEventSequenceEncoderDecoder(
+      note_seq.MelodyOneHotEncoding(min_note, max_note))
 
 
 # Dictionary of functions that take `min_note` and `max_note` and return the
@@ -83,7 +84,7 @@ def lookback_melody_encoder_decoder(min_note, max_note):
 melody_encoder_decoders = {
     'onehot': one_hot_melody_encoder_decoder,
     'lookback': lookback_melody_encoder_decoder,
-    'key': magenta.music.KeyMelodyEncoderDecoder
+    'key': note_seq.KeyMelodyEncoderDecoder
 }
 
 
@@ -116,7 +117,7 @@ def config_from_flags():
           '`--melody_encoder_decoder` must be one of %s. Got %s.' % (
               melody_encoder_decoders.keys(), FLAGS.melody_encoder_decoder))
     if FLAGS.generator_id is not None:
-      generator_details = magenta.protobuf.generator_pb2.GeneratorDetails(
+      generator_details = note_seq.protobuf.generator_pb2.GeneratorDetails(
           id=FLAGS.generator_id)
       if FLAGS.generator_description is not None:
         generator_details.description = FLAGS.generator_description
@@ -124,7 +125,7 @@ def config_from_flags():
       generator_details = None
     encoder_decoder = melody_encoder_decoders[FLAGS.melody_encoder_decoder](
         melody_rnn_model.DEFAULT_MIN_NOTE, melody_rnn_model.DEFAULT_MAX_NOTE)
-    hparams = tf.contrib.training.HParams()
+    hparams = contrib_training.HParams()
     hparams.parse(FLAGS.hparams)
     return melody_rnn_model.MelodyRnnConfig(
         generator_details, encoder_decoder, hparams)

@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,8 +23,9 @@ import random
 import subprocess
 import tempfile
 
+from magenta.contrib import training as contrib_training
 import sox
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 # The base pipeline is a list of stages, each of which consists of a name
 # (corresponding to a SoX function) and a dictionary of parameters with name
@@ -63,7 +64,7 @@ AUDIO_TRANSFORM_PIPELINE = [
 # Default hyperparameter values from the above pipeline. Note the additional
 # `transform_audio` hparam that defaults to False, i.e. by default no audio
 # transformation will be performed.
-DEFAULT_AUDIO_TRANSFORM_HPARAMS = tf.contrib.training.HParams(
+DEFAULT_AUDIO_TRANSFORM_HPARAMS = contrib_training.HParams(
     transform_audio=False,
     audio_transform_noise_type='pinknoise',
     audio_transform_min_noise_vol=0.0,

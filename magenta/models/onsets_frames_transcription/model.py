@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,13 +22,15 @@ import functools
 
 from magenta.common import flatten_maybe_padded_sequences
 from magenta.common import tf_utils
+from magenta.contrib import cudnn_rnn as contrib_cudnn_rnn
+from magenta.contrib import rnn as contrib_rnn
+from magenta.contrib import training as contrib_training
 from magenta.models.onsets_frames_transcription import constants
 from magenta.models.onsets_frames_transcription import infer_util
 from magenta.models.onsets_frames_transcription import metrics
 
-import tensorflow as tf
-
-import tensorflow.contrib.slim as slim
+import tensorflow.compat.v1 as tf
+import tf_slim as slim
 
 
 def conv_net(inputs, hparams):
@@ -36,7 +38,7 @@ def conv_net(inputs, hparams):
   with slim.arg_scope(
       [slim.conv2d, slim.fully_connected],
       activation_fn=tf.nn.relu,
-      weights_initializer=tf.contrib.layers.variance_scaling_initializer(
+      weights_initializer=slim.variance_scaling_initializer(
           factor=2.0, mode='FAN_AVG', uniform=True)):
 
     net = inputs
@@ -62,7 +64,7 @@ def conv_net(inputs, hparams):
     # Flatten while preserving batch and time dimensions.
     dims = tf.shape(net)
     net = tf.reshape(
-        net, (dims[0], dims[1], net.shape[2].value * net.shape[3].value),
+        net, (dims[0], dims[1], net.shape[2] * net.shape[3]),
         'flatten_end')
 
     net = slim.fully_connected(net, hparams.fc_size, scope='fc_end')
@@ -71,139 +73,52 @@ def conv_net(inputs, hparams):
     return net
 
 
-def cudnn_lstm_layer(inputs,
-                     batch_size,
-                     num_units,
-                     lengths=None,
-                     stack_size=1,
-                     rnn_dropout_drop_amt=0,
-                     is_training=True,
-                     bidirectional=True):
-  """Create a LSTM layer that uses cudnn."""
-  inputs_t = tf.transpose(inputs, [1, 0, 2])
-  if lengths is not None:
-    all_outputs = [inputs_t]
-    for i in range(stack_size):
-      with tf.variable_scope('stack_' + str(i)):
-        with tf.variable_scope('forward'):
-          lstm_fw = tf.contrib.cudnn_rnn.CudnnLSTM(
-              num_layers=1,
-              num_units=num_units,
-              direction='unidirectional',
-              dropout=rnn_dropout_drop_amt,
-              kernel_initializer=tf.contrib.layers.variance_scaling_initializer(
-              ),
-              bias_initializer=tf.zeros_initializer(),
-          )
-
-        c_fw = tf.zeros([1, batch_size, num_units], tf.float32)
-        h_fw = tf.zeros([1, batch_size, num_units], tf.float32)
-
-        outputs_fw, _ = lstm_fw(
-            all_outputs[-1], (h_fw, c_fw), training=is_training)
-
-        combined_outputs = outputs_fw
-
-        if bidirectional:
-          with tf.variable_scope('backward'):
-            lstm_bw = tf.contrib.cudnn_rnn.CudnnLSTM(
-                num_layers=1,
-                num_units=num_units,
-                direction='unidirectional',
-                dropout=rnn_dropout_drop_amt,
-                kernel_initializer=tf.contrib.layers
-                .variance_scaling_initializer(),
-                bias_initializer=tf.zeros_initializer(),
-            )
-
-          c_bw = tf.zeros([1, batch_size, num_units], tf.float32)
-          h_bw = tf.zeros([1, batch_size, num_units], tf.float32)
-
-          inputs_reversed = tf.reverse_sequence(
-              all_outputs[-1], lengths, seq_axis=0, batch_axis=1)
-          outputs_bw, _ = lstm_bw(
-              inputs_reversed, (h_bw, c_bw), training=is_training)
-
-          outputs_bw = tf.reverse_sequence(
-              outputs_bw, lengths, seq_axis=0, batch_axis=1)
-
-          combined_outputs = tf.concat([outputs_fw, outputs_bw], axis=2)
-
-        all_outputs.append(combined_outputs)
-
-    # for consistency with cudnn, here we just return the top of the stack,
-    # although this can easily be altered to do other things, including be
-    # more resnet like
-    return tf.transpose(all_outputs[-1], [1, 0, 2])
-  else:
-    lstm = tf.contrib.cudnn_rnn.CudnnLSTM(
-        num_layers=stack_size,
-        num_units=num_units,
-        direction='bidirectional' if bidirectional else 'unidirectional',
-        dropout=rnn_dropout_drop_amt,
-        kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
-        bias_initializer=tf.zeros_initializer(),
-    )
-    stack_multiplier = 2 if bidirectional else 1
-    c = tf.zeros([stack_multiplier * stack_size, batch_size, num_units],
-                 tf.float32)
-    h = tf.zeros([stack_multiplier * stack_size, batch_size, num_units],
-                 tf.float32)
-    outputs, _ = lstm(inputs_t, (h, c), training=is_training)
-    outputs = tf.transpose(outputs, [1, 0, 2])
-
-    return outputs
-
-
 def lstm_layer(inputs,
-               batch_size,
                num_units,
                lengths=None,
                stack_size=1,
                use_cudnn=False,
                rnn_dropout_drop_amt=0,
-               is_training=True,
                bidirectional=True):
   """Create a LSTM layer using the specified backend."""
   if use_cudnn:
-    return cudnn_lstm_layer(inputs, batch_size, num_units, lengths, stack_size,
-                            rnn_dropout_drop_amt, is_training, bidirectional)
-  else:
-    assert rnn_dropout_drop_amt == 0
-    cells_fw = [
-        tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
-        for _ in range(stack_size)
-    ]
-    cells_bw = [
-        tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
-        for _ in range(stack_size)
-    ]
-    with tf.variable_scope('cudnn_lstm'):
-      (outputs, unused_state_f,
-       unused_state_b) = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
-           cells_fw,
-           cells_bw,
-           inputs,
-           dtype=tf.float32,
-           sequence_length=lengths,
-           parallel_iterations=1)
+    tf.logging.warning('cuDNN LSTM no longer supported. Using regular LSTM.')
+  if not bidirectional:
+    raise ValueError('Only bidirectional LSTMs are supported.')
 
-    return outputs
+  assert rnn_dropout_drop_amt == 0
+  cells_fw = [
+      contrib_cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
+      for _ in range(stack_size)
+  ]
+  cells_bw = [
+      contrib_cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
+      for _ in range(stack_size)
+  ]
+  with tf.variable_scope('cudnn_lstm'):
+    (outputs, unused_state_f,
+     unused_state_b) = contrib_rnn.stack_bidirectional_dynamic_rnn(
+         cells_fw,
+         cells_bw,
+         inputs,
+         dtype=tf.float32,
+         sequence_length=lengths,
+         parallel_iterations=1)
+
+  return outputs
 
 
-def acoustic_model(inputs, hparams, lstm_units, lengths, is_training=True):
+def acoustic_model(inputs, hparams, lstm_units, lengths):
   """Acoustic model that handles all specs for a sequence in one window."""
   conv_output = conv_net(inputs, hparams)
 
   if lstm_units:
     return lstm_layer(
         conv_output,
-        hparams.batch_size,
         lstm_units,
         lengths=lengths if hparams.use_lengths else None,
         stack_size=hparams.acoustic_rnn_stack_size,
         use_cudnn=hparams.use_cudnn,
-        is_training=is_training,
         bidirectional=hparams.bidirectional)
 
   else:
@@ -238,8 +153,7 @@ def model_fn(features, labels, mode, params, config):
           spec,
           hparams,
           lstm_units=hparams.onset_lstm_units,
-          lengths=length,
-          is_training=is_training)
+          lengths=length)
       onset_probs = slim.fully_connected(
           onset_outputs,
           constants.MIDI_PITCHES,
@@ -258,8 +172,7 @@ def model_fn(features, labels, mode, params, config):
           spec,
           hparams,
           lstm_units=hparams.offset_lstm_units,
-          lengths=length,
-          is_training=is_training)
+          lengths=length)
       offset_probs = slim.fully_connected(
           offset_outputs,
           constants.MIDI_PITCHES,
@@ -279,8 +192,7 @@ def model_fn(features, labels, mode, params, config):
           spec,
           hparams,
           lstm_units=hparams.velocity_lstm_units,
-          lengths=length,
-          is_training=is_training)
+          lengths=length)
       velocity_values = slim.fully_connected(
           velocity_outputs,
           constants.MIDI_PITCHES,
@@ -306,8 +218,7 @@ def model_fn(features, labels, mode, params, config):
             spec,
             hparams,
             lstm_units=hparams.frame_lstm_units,
-            lengths=length,
-            is_training=is_training)
+            lengths=length)
         activation_probs = slim.fully_connected(
             activation_outputs,
             constants.MIDI_PITCHES,
@@ -341,12 +252,10 @@ def model_fn(features, labels, mode, params, config):
       if hparams.combined_lstm_units > 0:
         outputs = lstm_layer(
             combined_probs,
-            hparams.batch_size,
             hparams.combined_lstm_units,
             lengths=length if hparams.use_lengths else None,
             stack_size=hparams.combined_rnn_stack_size,
             use_cudnn=hparams.use_cudnn,
-            is_training=is_training,
             bidirectional=hparams.bidirectional)
       else:
         outputs = combined_probs
@@ -388,13 +297,14 @@ def model_fn(features, labels, mode, params, config):
   onset_predictions = onset_probs_flat > hparams.predict_onset_threshold
   offset_predictions = offset_probs_flat > hparams.predict_offset_threshold
 
-  frame_probs = tf.expand_dims(frame_probs_flat, axis=0)
   frame_predictions = tf.expand_dims(frame_predictions, axis=0)
   onset_predictions = tf.expand_dims(onset_predictions, axis=0)
   offset_predictions = tf.expand_dims(offset_predictions, axis=0)
   velocity_values = tf.expand_dims(velocity_values_flat, axis=0)
 
   metrics_values = metrics.define_metrics(
+      frame_probs=frame_probs,
+      onset_probs=onset_probs,
       frame_predictions=frame_predictions,
       onset_predictions=onset_predictions,
       offset_predictions=offset_predictions,
@@ -410,28 +320,40 @@ def model_fn(features, labels, mode, params, config):
     metrics_values[loss_label] = loss_collection
 
   def predict_sequence():
-    """Convert frame predictions into a sequence."""
-    def _predict(frame_predictions, onset_predictions, offset_predictions,
-                 velocity_values):
+    """Convert frame predictions into a sequence (TF)."""
+
+    def _predict(frame_probs, onset_probs, frame_predictions, onset_predictions,
+                 offset_predictions, velocity_values):
+      """Convert frame predictions into a sequence (Python)."""
       sequence = infer_util.predict_sequence(
+          frame_probs=frame_probs,
+          onset_probs=onset_probs,
           frame_predictions=frame_predictions,
           onset_predictions=onset_predictions,
           offset_predictions=offset_predictions,
           velocity_values=velocity_values,
-          hparams=hparams, min_pitch=constants.MIN_MIDI_PITCH)
+          hparams=hparams,
+          min_pitch=constants.MIN_MIDI_PITCH)
       return sequence.SerializeToString()
 
     sequence = tf.py_func(
         _predict,
         inp=[
-            frame_predictions[0], onset_predictions[0], offset_predictions[0],
+            frame_probs[0],
+            onset_probs[0],
+            frame_predictions[0],
+            onset_predictions[0],
+            offset_predictions[0],
             velocity_values[0],
-        ], Tout=tf.string, stateful=False)
+        ],
+        Tout=tf.string,
+        stateful=False)
     sequence.set_shape([])
     return tf.expand_dims(sequence, axis=0)
 
   predictions = {
       'frame_probs': frame_probs,
+      'onset_probs': onset_probs,
       'frame_predictions': frame_predictions,
       'onset_predictions': onset_predictions,
       'offset_predictions': offset_predictions,
@@ -442,11 +364,12 @@ def model_fn(features, labels, mode, params, config):
       'sequence_ids': features.sequence_id,
       'sequence_labels': labels.note_sequence,
       'frame_labels': labels.labels,
+      'onset_labels': labels.onsets,
   }
-  for k, v in metrics_values.iteritems():
+  for k, v in metrics_values.items():
     predictions[k] = tf.stack(v)
 
-  metric_ops = {k: tf.metrics.mean(v) for k, v in metrics_values.iteritems()}
+  metric_ops = {k: tf.metrics.mean(v) for k, v in metrics_values.items()}
 
   train_op = None
   loss = None
@@ -480,7 +403,7 @@ def model_fn(features, labels, mode, params, config):
       loss_label = 'losses/' + label
       tf.summary.scalar(loss_label, tf.reduce_mean(loss_collection))
 
-    train_op = tf.contrib.layers.optimize_loss(
+    train_op = slim.optimize_loss(
         name='training',
         loss=loss,
         global_step=tf.train.get_or_create_global_step(),
@@ -505,7 +428,7 @@ def get_default_hparams():
     A tf.contrib.training.HParams object representing the default
     hyperparameters for the model.
   """
-  return tf.contrib.training.HParams(
+  return contrib_training.HParams(
       batch_size=8,
       learning_rate=0.0006,
       decay_steps=10000,
@@ -529,11 +452,11 @@ def get_default_hparams():
       freq_sizes=[3, 3, 3],
       num_filters=[48, 48, 96],
       pool_sizes=[1, 2, 2],
-      dropout_keep_amts=[1.0, 0.25, 0.25],
+      dropout_keep_amts=[1.0, 0.75, 0.75],
       fc_size=768,
       fc_dropout_keep_amt=0.5,
       use_lengths=False,
-      use_cudnn=True,
+      use_cudnn=False,  # DEPRECATED
       rnn_dropout_drop_amt=0.0,
       bidirectional=True,
       predict_frame_threshold=0.5,

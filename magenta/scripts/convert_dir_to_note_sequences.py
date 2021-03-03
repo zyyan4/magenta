@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 r""""Converts music files to NoteSequence protos and writes TFRecord file.
 
 Currently supports MIDI (.mid, .midi) and MusicXML (.xml, .mxl) files.
@@ -23,13 +24,13 @@ Example usage:
     --log=INFO
 """
 
+import hashlib
 import os
 
-from magenta.music import abc_parser
-from magenta.music import midi_io
-from magenta.music import musicxml_reader
-from magenta.music import note_sequence_io
-import tensorflow as tf
+from note_seq import abc_parser
+from note_seq import midi_io
+from note_seq import musicxml_reader
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -43,6 +44,25 @@ tf.app.flags.DEFINE_bool('recursive', False,
 tf.app.flags.DEFINE_string('log', 'INFO',
                            'The threshold for what messages will be logged '
                            'DEBUG, INFO, WARN, ERROR, or FATAL.')
+
+
+def generate_note_sequence_id(filename, collection_name, source_type):
+  """Generates a unique ID for a sequence.
+
+  The format is:'/id/<type>/<collection name>/<hash>'.
+
+  Args:
+    filename: The string path to the source file relative to the root of the
+        collection.
+    collection_name: The collection from which the file comes.
+    source_type: The source type as a string (e.g. "midi" or "abc").
+
+  Returns:
+    The generated sequence ID as a string.
+  """
+  filename_fingerprint = hashlib.sha1(filename.encode('utf-8'))
+  return '/id/%s/%s/%s' % (
+      source_type.lower(), collection_name, filename_fingerprint.hexdigest())
 
 
 def convert_files(root_dir, sub_dir, writer, recursive=False):
@@ -76,7 +96,7 @@ def convert_files(root_dir, sub_dir, writer, recursive=False):
         tf.logging.fatal('%r generated an exception: %s', full_file_path, exc)
         continue
       if sequence:
-        writer.write(sequence)
+        writer.write(sequence.SerializeToString())
     elif (full_file_path.lower().endswith('.xml') or
           full_file_path.lower().endswith('.mxl')):
       try:
@@ -85,7 +105,7 @@ def convert_files(root_dir, sub_dir, writer, recursive=False):
         tf.logging.fatal('%r generated an exception: %s', full_file_path, exc)
         continue
       if sequence:
-        writer.write(sequence)
+        writer.write(sequence.SerializeToString())
     elif full_file_path.lower().endswith('.abc'):
       try:
         sequences = convert_abc(root_dir, sub_dir, full_file_path)
@@ -94,7 +114,7 @@ def convert_files(root_dir, sub_dir, writer, recursive=False):
         continue
       if sequences:
         for sequence in sequences:
-          writer.write(sequence)
+          writer.write(sequence.SerializeToString())
     else:
       if recursive and tf.gfile.IsDirectory(full_file_path):
         recurse_sub_dirs.append(os.path.join(sub_dir, file_in_dir))
@@ -128,7 +148,7 @@ def convert_midi(root_dir, sub_dir, full_file_path):
     return None
   sequence.collection_name = os.path.basename(root_dir)
   sequence.filename = os.path.join(sub_dir, os.path.basename(full_file_path))
-  sequence.id = note_sequence_io.generate_note_sequence_id(
+  sequence.id = generate_note_sequence_id(
       sequence.filename, sequence.collection_name, 'midi')
   tf.logging.info('Converted MIDI file %s.', full_file_path)
   return sequence
@@ -155,7 +175,7 @@ def convert_musicxml(root_dir, sub_dir, full_file_path):
     return None
   sequence.collection_name = os.path.basename(root_dir)
   sequence.filename = os.path.join(sub_dir, os.path.basename(full_file_path))
-  sequence.id = note_sequence_io.generate_note_sequence_id(
+  sequence.id = generate_note_sequence_id(
       sequence.filename, sequence.collection_name, 'musicxml')
   tf.logging.info('Converted MusicXML file %s.', full_file_path)
   return sequence
@@ -188,10 +208,10 @@ def convert_abc(root_dir, sub_dir, full_file_path):
         '%s', full_file_path, exception)
 
   sequences = []
-  for idx, tune in tunes.iteritems():
+  for idx, tune in tunes.items():
     tune.collection_name = os.path.basename(root_dir)
     tune.filename = os.path.join(sub_dir, os.path.basename(full_file_path))
-    tune.id = note_sequence_io.generate_note_sequence_id(
+    tune.id = generate_note_sequence_id(
         '{}_{}'.format(tune.filename, idx), tune.collection_name, 'abc')
     sequences.append(tune)
     tf.logging.info('Converted ABC file %s.', full_file_path)
@@ -212,7 +232,7 @@ def convert_directory(root_dir, output_file, recursive=False):
     recursive: A boolean specifying whether or not recursively convert files
         contained in subdirectories of the specified directory.
   """
-  with note_sequence_io.NoteSequenceRecordWriter(output_file) as writer:
+  with tf.io.TFRecordWriter(output_file) as writer:
     convert_files(root_dir, '', writer, recursive)
 
 
@@ -237,6 +257,7 @@ def main(unused_argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 

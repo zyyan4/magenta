@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ from __future__ import division
 
 from magenta.models.polyphony_rnn import polyphony_lib
 from magenta.models.polyphony_rnn.polyphony_lib import PolyphonicEvent
-from magenta.music import encoder_decoder
+from note_seq import encoder_decoder
 
 EVENT_CLASSES_WITHOUT_PITCH = [
     PolyphonicEvent.START,

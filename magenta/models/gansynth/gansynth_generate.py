@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 r"""Generate samples with a pretrained GANSynth model.
 
 To use a config of hyperparameters and manual hparams:
@@ -23,9 +24,6 @@ If a MIDI file is specified, notes are synthesized with interpolation between
 latent vectors in time. If no MIDI file is given, a random batch of notes is
 synthesized.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 
@@ -34,7 +32,7 @@ from magenta.models.gansynth.lib import flags as lib_flags
 from magenta.models.gansynth.lib import generate_util as gu
 from magenta.models.gansynth.lib import model as lib_model
 from magenta.models.gansynth.lib import util
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 absl.flags.DEFINE_string('ckpt_dir',
@@ -52,6 +50,9 @@ absl.flags.DEFINE_integer('batch_size', 8, 'Batch size for generation.')
 absl.flags.DEFINE_float('secs_per_instrument', 6.0,
                         'In random interpolations, the seconds it takes to '
                         'interpolate from one instrument to another.')
+absl.flags.DEFINE_string('tfds_data_dir',
+                         'gs://tfds-data/datasets',
+                         'Data directory for the TFDS dataset used to train.')
 
 FLAGS = absl.flags.FLAGS
 tf.logging.set_verbosity(tf.logging.INFO)
@@ -61,7 +62,11 @@ def main(unused_argv):
   absl.flags.FLAGS.alsologtostderr = True
 
   # Load the model
-  flags = lib_flags.Flags({'batch_size_schedule': [FLAGS.batch_size]})
+  flags = lib_flags.Flags(
+      {
+          'batch_size_schedule': [FLAGS.batch_size],
+          'tfds_data_dir': FLAGS.tfds_data_dir
+      })
   model = lib_model.Model.load_from_path(FLAGS.ckpt_dir, flags)
 
   # Make an output directory if it doesn't exist
@@ -105,6 +110,7 @@ def main(unused_argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 

@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import json
 
 from magenta.models.onsets_frames_transcription import configs
 from magenta.models.onsets_frames_transcription import data
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_string(
 
 def create_spec(filename, hparams):
   """Processes an audio file into a spectrogram."""
-  wav_data = tf.gfile.Open(filename).read()
+  wav_data = tf.gfile.Open(filename, 'rb').read()
   spec = data.wav_to_spec(wav_data, hparams)
   return spec
 
@@ -65,6 +65,7 @@ def main(argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 if __name__ == '__main__':

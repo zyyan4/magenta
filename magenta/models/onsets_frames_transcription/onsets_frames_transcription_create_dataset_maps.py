@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,28 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Copyright 2017 Google Inc. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Lint as: python3
 """Create the tfrecord files necessary for training onsets and frames.
 
 The training files are split in ~20 second chunks by default, the test files
 are not split.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import glob
 import os
@@ -41,10 +25,11 @@ import re
 
 from magenta.models.onsets_frames_transcription import audio_label_data_utils
 
-from magenta.music import audio_io
-from magenta.music import midi_io
+from note_seq import audio_io
+from note_seq import midi_io
 
-import tensorflow as tf
+import six
+import tensorflow.compat.v1 as tf
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -67,7 +52,7 @@ train_dirs = [
 def filename_to_id(filename):
   """Translate a .wav or .mid path to a MAPS sequence id."""
   return re.match(r'.*MUS-(.*)_[^_]+\.\w{3}',
-                  os.path.basename(filename)).group(1)
+                  six.ensure_str(os.path.basename(filename))).group(1)
 
 
 def generate_train_set(exclude_ids):
@@ -138,6 +123,7 @@ def main(unused_argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 

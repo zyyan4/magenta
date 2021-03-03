@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ from magenta.models.latent_transfer import common
 from magenta.models.latent_transfer import common_joint
 from magenta.models.latent_transfer import model_joint
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.flags.FLAGS
 
@@ -81,7 +81,7 @@ def main(unused_argv):
   # Reason:
   #   Following variables have their name consider to be invalid by pylint so
   #   we disable the warning.
-  #   - Variable that in its name has A or B indictating their belonging of
+  #   - Variable that in its name has A or B indicating their belonging of
   #     one side of data.
   del unused_argv
 

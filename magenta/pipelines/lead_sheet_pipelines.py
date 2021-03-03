@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,18 +15,18 @@
 """Data processing pipelines for lead sheets."""
 import copy
 
-from magenta.music import chord_symbols_lib
-from magenta.music import chords_lib
-from magenta.music import events_lib
-from magenta.music import lead_sheets_lib
-from magenta.music import LeadSheet
-from magenta.music import sequences_lib
 from magenta.pipelines import chord_pipelines
 from magenta.pipelines import melody_pipelines
 from magenta.pipelines import pipeline
 from magenta.pipelines import statistics
-from magenta.protobuf import music_pb2
-import tensorflow as tf
+from note_seq import chord_symbols_lib
+from note_seq import chords_lib
+from note_seq import events_lib
+from note_seq import lead_sheets_lib
+from note_seq import LeadSheet
+from note_seq import sequences_lib
+from note_seq.protobuf import music_pb2
+import tensorflow.compat.v1 as tf
 
 
 class LeadSheetExtractor(pipeline.Pipeline):

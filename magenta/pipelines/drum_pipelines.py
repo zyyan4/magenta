@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,14 +14,14 @@
 
 """Data processing pipelines for drum tracks."""
 
-from magenta.music import drums_lib
-from magenta.music import DrumTrack
-from magenta.music import events_lib
-from magenta.music import sequences_lib
 from magenta.pipelines import pipeline
 from magenta.pipelines import statistics
-from magenta.protobuf import music_pb2
-import tensorflow as tf
+from note_seq import drums_lib
+from note_seq import DrumTrack
+from note_seq import events_lib
+from note_seq import sequences_lib
+from note_seq.protobuf import music_pb2
+import tensorflow.compat.v1 as tf
 
 
 def extract_drum_tracks(quantized_sequence,

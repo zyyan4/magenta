@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from __future__ import print_function
 from magenta.models.onsets_frames_transcription import configs
 from magenta.models.onsets_frames_transcription import data
 from magenta.models.onsets_frames_transcription import infer
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 def main(argv):
@@ -31,6 +31,7 @@ def main(argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.flags.mark_flags_as_required(['model_dir', 'examples_path'])
 
   tf.app.run(main)

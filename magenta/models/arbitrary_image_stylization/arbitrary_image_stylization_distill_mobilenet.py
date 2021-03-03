@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,19 +14,14 @@
 
 """Distills a trained style prediction network using a MobileNetV2.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import os
 
 from magenta.models.arbitrary_image_stylization import arbitrary_image_stylization_build_mobilenet_model as build_mobilenet_model
 from magenta.models.arbitrary_image_stylization import arbitrary_image_stylization_build_model as build_model
 from magenta.models.image_stylization import image_utils
-import tensorflow as tf
-
-slim = tf.contrib.slim
+import tensorflow.compat.v1 as tf
+import tf_slim as slim
 
 DEFAULT_CONTENT_WEIGHTS = '{"vgg_16/conv3": 1}'
 DEFAULT_STYLE_WEIGHTS = ('{"vgg_16/conv1": 0.5e-3, "vgg_16/conv2": 0.5e-3,'
@@ -186,6 +181,7 @@ def main(unused_argv=None):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 

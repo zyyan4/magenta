@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +14,11 @@
 
 """Polyphonic RNN model."""
 
-import magenta
+from magenta.contrib import training as contrib_training
 from magenta.models.polyphony_rnn import polyphony_encoder_decoder
 from magenta.models.shared import events_rnn_model
-import tensorflow as tf
+import note_seq
+from note_seq.protobuf import generator_pb2
 
 
 class PolyphonyRnnModel(events_rnn_model.EventSequenceRnnModel):
@@ -67,16 +68,16 @@ class PolyphonyRnnModel(events_rnn_model.EventSequenceRnnModel):
 
 
 default_configs = {
-    'polyphony': events_rnn_model.EventSequenceRnnConfig(
-        magenta.protobuf.generator_pb2.GeneratorDetails(
-            id='polyphony',
-            description='Polyphonic RNN'),
-        magenta.music.OneHotEventSequenceEncoderDecoder(
-            polyphony_encoder_decoder.PolyphonyOneHotEncoding()),
-        tf.contrib.training.HParams(
-            batch_size=64,
-            rnn_layer_sizes=[256, 256, 256],
-            dropout_keep_prob=0.5,
-            clip_norm=5,
-            learning_rate=0.001)),
+    'polyphony':
+        events_rnn_model.EventSequenceRnnConfig(
+            generator_pb2.GeneratorDetails(
+                id='polyphony', description='Polyphonic RNN'),
+            note_seq.OneHotEventSequenceEncoderDecoder(
+                polyphony_encoder_decoder.PolyphonyOneHotEncoding()),
+            contrib_training.HParams(
+                batch_size=64,
+                rnn_layer_sizes=[256, 256, 256],
+                dropout_keep_prob=0.5,
+                clip_norm=5,
+                learning_rate=0.001)),
 }

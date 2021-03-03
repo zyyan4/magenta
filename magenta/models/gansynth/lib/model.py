@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """GANSynth Model class definition.
 
 Exposes external API for generating samples and evaluation.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import json
 import os
@@ -32,7 +29,7 @@ from magenta.models.gansynth.lib import networks
 from magenta.models.gansynth.lib import train_util
 from magenta.models.gansynth.lib import util
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tensorflow_gan as tfgan
 
 
@@ -43,7 +40,7 @@ def set_flags(flags):
   flags.set_if_empty('train_data_path', '/tmp/gansynth/nsynth-train.tfrecord')
 
   ### Dataset ###
-  flags.set_if_empty('dataset_name', 'nsynth_tfrecord')
+  flags.set_if_empty('dataset_name', 'nsynth_tfds')
   flags.set_if_empty('data_type', 'mel')  # linear, phase, mel
   flags.set_if_empty('audio_length', 64000)
   flags.set_if_empty('sample_rate', 16000)
@@ -144,8 +141,9 @@ class Model(object):
     # Read the flags from the experiment.json file
     # experiment.json is in the folder above
     # Remove last '/' if present
-    path = path[:-1] if path.endswith('/') else path
-    path = util.expand_path(path)
+    path = path.rstrip('/')
+    if not path.startswith('gs://'):
+      path = util.expand_path(path)
     if flags is None:
       flags = lib_flags.Flags()
     flags['train_root_dir'] = path
@@ -170,7 +168,7 @@ class Model(object):
                        % path)
     # Get last checkpoint
     last_stage_dir = train_sub_dirs[-1]
-    stage_id = int(last_stage_dir.split('_')[-1])
+    stage_id = int(last_stage_dir.split('_')[-1].strip('/'))
     weights_dir = os.path.join(path, last_stage_dir)
     ckpt = tf.train.latest_checkpoint(weights_dir)
     print('Load model from {}'.format(ckpt))
@@ -197,7 +195,7 @@ class Model(object):
 
     # gen_one_hot_labels = real_one_hot_labels
     gen_one_hot_labels = data_helper.provide_one_hot_labels(batch_size)
-    num_tokens = real_one_hot_labels.shape[1].value
+    num_tokens = int(real_one_hot_labels.shape[1])
 
     current_image_id = tf.train.get_or_create_global_step()
     current_image_id_inc_op = current_image_id.assign_add(batch_size)
@@ -252,8 +250,10 @@ class Model(object):
     noises = train_util.make_latent_vectors(batch_size, **config)
 
     # Get network functions and wrap with hparams
+    # pylint:disable=unnecessary-lambda
     g_fn = lambda x: net_fns.g_fn_registry[config['g_fn']](x, **config)
     d_fn = lambda x: net_fns.d_fn_registry[config['d_fn']](x, **config)
+    # pylint:enable=unnecessary-lambda
 
     # Extra lambda functions to conform to tfgan.gan_model interface
     gan_model = tfgan.gan_model(
@@ -439,7 +439,7 @@ class Model(object):
     fake_batch_size = config['fake_batch_size']
     real_batch_size = self.batch_size
     real_one_hot_labels = self.real_one_hot_labels
-    num_tokens = real_one_hot_labels.shape[1].value
+    num_tokens = int(real_one_hot_labels.shape[1])
 
     # When making prediction, use the ema smoothed generator vars by
     # `_custom_getter`.

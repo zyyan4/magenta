@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,18 +13,13 @@
 # limitations under the License.
 
 """MusicVAE LSTM model utilities."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
-import tensorflow as tf
-from tensorflow.contrib import rnn
-from tensorflow.contrib import seq2seq
-from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
-from tensorflow.python.util import nest
+from magenta.contrib import rnn as contrib_rnn
+from magenta.contrib import seq2seq as contrib_seq2seq
+import tensorflow.compat.v1 as tf
+
+rnn = tf.nn.rnn_cell
 
 
 def rnn_cell(rnn_cell_size, dropout_keep_prob, residual, is_training=True):
@@ -32,11 +27,11 @@ def rnn_cell(rnn_cell_size, dropout_keep_prob, residual, is_training=True):
   dropout_keep_prob = dropout_keep_prob if is_training else 1.0
   cells = []
   for i in range(len(rnn_cell_size)):
-    cell = rnn.LSTMBlockCell(rnn_cell_size[i])
+    cell = contrib_rnn.LSTMBlockCell(rnn_cell_size[i])
     if residual:
       cell = rnn.ResidualWrapper(cell)
       if i == 0 or rnn_cell_size[i] != rnn_cell_size[i - 1]:
-        cell = rnn.InputProjectionWrapper(cell, rnn_cell_size[i])
+        cell = contrib_rnn.InputProjectionWrapper(cell, rnn_cell_size[i])
     cell = rnn.DropoutWrapper(
         cell,
         input_keep_prob=dropout_keep_prob)
@@ -44,76 +39,19 @@ def rnn_cell(rnn_cell_size, dropout_keep_prob, residual, is_training=True):
   return rnn.MultiRNNCell(cells)
 
 
-def cudnn_lstm_layer(layer_sizes, dropout_keep_prob, is_training=True,
-                     name_or_scope='rnn'):
-  """Builds a CudnnLSTM Layer based on the given parameters."""
-  dropout_keep_prob = dropout_keep_prob if is_training else 1.0
-  for ls in layer_sizes:
-    if ls != layer_sizes[0]:
-      raise ValueError(
-          'CudnnLSTM does not support layers with differing sizes. Got: %s' %
-          layer_sizes)
-  lstm = cudnn_rnn.CudnnLSTM(
-      num_layers=len(layer_sizes),
-      num_units=layer_sizes[0],
-      direction='unidirectional',
-      dropout=1.0 - dropout_keep_prob,
-      name=name_or_scope)
+def build_bidirectional_lstm(
+    layer_sizes, dropout_keep_prob, residual, is_training):
+  """Build the Tensorflow graph for a bidirectional LSTM."""
 
-  class BackwardCompatibleCudnnParamsFormatConverterLSTM(
-      tf.contrib.cudnn_rnn.CudnnParamsFormatConverterLSTM):
-    """Overrides CudnnParamsFormatConverterLSTM for backward-compatibility."""
+  cells_fw = []
+  cells_bw = []
+  for layer_size in layer_sizes:
+    cells_fw.append(
+        rnn_cell([layer_size], dropout_keep_prob, residual, is_training))
+    cells_bw.append(
+        rnn_cell([layer_size], dropout_keep_prob, residual, is_training))
 
-    def _cudnn_to_tf_biases(self, *cu_biases):
-      """Overrides to subtract 1.0 from `forget_bias` (see BasicLSTMCell)."""
-      (tf_bias,) = (
-          super(BackwardCompatibleCudnnParamsFormatConverterLSTM,
-                self)._cudnn_to_tf_biases(*cu_biases))
-      i, c, f, o = tf.split(tf_bias, 4)
-      # Non-Cudnn LSTM cells add 1.0 to the forget bias variable.
-      return (tf.concat([i, c, f - 1.0, o], axis=0),)
-
-    def _tf_to_cudnn_biases(self, *tf_biases):
-      """Overrides to add 1.0 to `forget_bias` (see BasicLSTMCell)."""
-      (tf_bias,) = tf_biases
-      i, c, f, o = tf.split(tf_bias, 4)
-      # Non-Cudnn LSTM cells add 1.0 to the forget bias variable.
-      return (super(BackwardCompatibleCudnnParamsFormatConverterLSTM,
-                    self)._tf_to_cudnn_biases(
-                        tf.concat([i, c, f + 1.0, o], axis=0)))
-
-  class BackwardCompatibleCudnnLSTMSaveable(
-      tf.contrib.cudnn_rnn.CudnnLSTMSaveable):
-    """Overrides CudnnLSTMSaveable for backward-compatibility."""
-
-    _format_converter_cls = BackwardCompatibleCudnnParamsFormatConverterLSTM
-
-    def _tf_canonical_name_prefix(self, layer, is_fwd=True):
-      """Overrides for backward-compatible variable names."""
-      if self._direction == 'unidirectional':
-        return 'multi_rnn_cell/cell_%d/lstm_cell' % layer
-      else:
-        return (
-            'cell_%d/bidirectional_rnn/%s/multi_rnn_cell/cell_0/lstm_cell'
-            % (layer, 'fw' if is_fwd else 'bw'))
-
-  lstm._saveable_cls = BackwardCompatibleCudnnLSTMSaveable  # pylint:disable=protected-access
-  return lstm
-
-
-def state_tuples_to_cudnn_lstm_state(lstm_state_tuples):
-  """Convert tuple of LSTMStateTuples to CudnnLSTM format."""
-  h = tf.stack([s.h for s in lstm_state_tuples])
-  c = tf.stack([s.c for s in lstm_state_tuples])
-  return (h, c)
-
-
-def cudnn_lstm_state_to_state_tuples(cudnn_lstm_state):
-  """Convert CudnnLSTM format to tuple of LSTMStateTuples."""
-  h, c = cudnn_lstm_state
-  return tuple(
-      rnn.LSTMStateTuple(h=h_i, c=c_i)
-      for h_i, c_i in zip(tf.unstack(h), tf.unstack(c)))
+  return cells_fw, cells_bw
 
 
 def _get_final_index(sequence_length, time_major=True):
@@ -149,8 +87,8 @@ def set_final(sequence, sequence_length, values, time_major=False):
 
 def initial_cell_state_from_embedding(cell, z, name=None):
   """Computes an initial RNN `cell` state from an embedding, `z`."""
-  flat_state_sizes = nest.flatten(cell.state_size)
-  return nest.pack_sequence_as(
+  flat_state_sizes = tf.nest.flatten(cell.state_size)
+  return tf.nest.pack_sequence_as(
       cell.zero_state(batch_size=z.shape[0], dtype=tf.float32),
       tf.split(
           tf.layers.dense(
@@ -244,7 +182,7 @@ class Seq2SeqLstmDecoderOutput(
   pass
 
 
-class Seq2SeqLstmDecoder(seq2seq.BasicDecoder):
+class Seq2SeqLstmDecoder(contrib_seq2seq.BasicDecoder):
   """Overrides BaseDecoder to include rnn inputs in the output."""
 
   def __init__(self, cell, helper, initial_state, input_shape,
@@ -262,10 +200,10 @@ class Seq2SeqLstmDecoder(seq2seq.BasicDecoder):
 
   @property
   def output_dtype(self):
-    dtype = nest.flatten(self._initial_state)[0].dtype
+    dtype = tf.nest.flatten(self._initial_state)[0].dtype
     return Seq2SeqLstmDecoderOutput(
         dtype,
-        nest.map_structure(lambda _: dtype, self._rnn_output_size()),
+        tf.nest.map_structure(lambda _: dtype, self._rnn_output_size()),
         self._helper.sample_ids_dtype)
 
   def step(self, time, inputs, state, name=None):

@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,14 +13,10 @@
 # limitations under the License.
 
 """Command line utility for exporting Coconet to SavedModel."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from magenta.models.coconet import lib_graph
 from magenta.models.coconet import lib_saved_model
 from magenta.models.coconet import lib_tfsampling
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.app.flags.FLAGS
 flags = tf.app.flags
@@ -57,4 +53,5 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.app.run()

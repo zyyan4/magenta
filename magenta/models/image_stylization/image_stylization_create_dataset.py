@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,18 +19,13 @@ unique style label and the pre-computed Gram matrices for all layers of a VGG16
 classifier pre-trained on Imagenet (where max-pooling operations have been
 replaced with average-pooling operations).
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import io
 import os
 
 from magenta.models.image_stylization import image_utils
 from magenta.models.image_stylization import learning
-import scipy
-import tensorflow as tf
+import skimage.io
+import tensorflow.compat.v1 as tf
 
 flags = tf.app.flags
 flags.DEFINE_string('style_files', None, 'Style image files.')
@@ -75,7 +70,7 @@ def main(unused_argv):
 
       style_image = image_utils.load_np_image(style_file)
       buf = io.BytesIO()
-      scipy.misc.imsave(buf, style_image, format='JPEG')
+      skimage.io.imsave(buf, style_image, format='JPEG')
       buf.seek(0)
       feature['image_raw'] = _bytes_feature(buf.getvalue())
 
@@ -87,8 +82,9 @@ def main(unused_argv):
               # layers are already too deep in the network to be useful for
               # style and b) they're quite expensive to store.
               final_endpoint='pool5')
-          for name, matrix in style_end_points.iteritems():
-            feature[name] = _float_feature(matrix.flatten().tolist())
+          for name in style_end_points:
+            feature[name] = _float_feature(
+                style_end_points[name].flatten().tolist())
 
       example = tf.train.Example(features=tf.train.Features(feature=feature))
       writer.write(example.SerializeToString())
@@ -97,6 +93,7 @@ def main(unused_argv):
 
 
 def console_entry_point():
+  tf.disable_v2_behavior()
   tf.app.run(main)
 
 

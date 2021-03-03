@@ -1,4 +1,4 @@
-# Copyright 2019 The Magenta Authors.
+# Copyright 2021 The Magenta Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,14 +13,12 @@
 # limitations under the License.
 
 """A MIDI clock to synchronize multiple `magenta_midi` instances."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from magenta.interfaces.midi import midi_hub
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+
+tf.disable_v2_behavior()
 
 FLAGS = tf.app.flags.FLAGS
 
